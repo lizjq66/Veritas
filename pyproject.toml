@@ -1,0 +1,12 @@
+[project]
+name = "veritas"
+version = "0.1.0"
+description = "Lean-native trust infrastructure for agent-native finance"
+requires-python = ">=3.11"
+dependencies = [
+    "hyperliquid-python-sdk",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.backends._legacy:_Backend"

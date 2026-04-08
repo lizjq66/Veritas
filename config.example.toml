@@ -1,0 +1,19 @@
+[hyperliquid]
+private_key = ""        # Testnet wallet private key (0x...)
+network = "testnet"     # "testnet" only for v0.1
+
+[llm]
+provider = "anthropic"  # Reserved for v0.2 — v0.1 does not call LLM
+api_key = ""
+model = "claude-sonnet-4-20250514"
+
+[strategy]
+coin = "BTC"
+check_interval_seconds = 60
+
+[risk]
+stop_loss_pct = 5.0     # Hard stop loss (% of entry price)
+
+[paths]
+veritas_core = ".lake/build/bin/veritas-core"  # Lean binary
+db = "data/veritas.db"

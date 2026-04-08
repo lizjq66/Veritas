@@ -1,0 +1,12 @@
+config.toml
+data/
+logs/
+__pycache__/
+*.pyc
+.env
+.venv/
+
+# Lake build artifacts
+.lake/
+lake-packages/
+build/
