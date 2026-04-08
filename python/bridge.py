@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Subprocess + JSON bridge to the Lean veritas-core binary.
 
 This is the trust boundary. Python sends data in, Lean decides, Python

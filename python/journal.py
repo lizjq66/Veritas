@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """SQLite read/write — persistence for assumptions and trades.
 
 Pure I/O: reads and writes data. No decisions.

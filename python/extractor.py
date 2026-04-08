@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """LLM client placeholder — v0.1 does not call LLM.
 
 In v0.1, assumption extraction is hardcoded in the Lean core

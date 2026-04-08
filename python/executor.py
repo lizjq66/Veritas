@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Hyperliquid order placement — execute trades.
 
 Pure I/O: places orders, returns results. No decisions.

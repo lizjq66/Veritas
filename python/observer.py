@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Hyperliquid API client — observe market state.
 
 Pure I/O: fetches data, returns it as a dict. No decisions.
@@ -56,7 +58,7 @@ class FakeObserver:
     @staticmethod
     def _default_scenarios() -> list[dict]:
         """A simple funding spike → reversion cycle."""
-        base_ts = int(time.time())
+        base_ts = 1700000000  # fixed epoch for deterministic replay
         return [
             # Extreme negative funding → should trigger SHORT signal
             {"funding_rate": -0.0008, "btc_price": 68000.0,

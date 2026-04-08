@@ -1,0 +1,59 @@
+
+Veritas v0.1 | Lean-native core | BTC-USDC perp
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Core: veritas-core (Lean 4, compiled to native)
+Proven theorems: 9/9 | Sorry count: 0 | Axioms: 20
+Trades so far: 0
+
+[22:13:20] observe → funding=-0.000800, price=$68,000
+[22:14:20] decide  → SHORT
+[22:15:20] declare → "funding_rate_reverts_within_8h"
+[22:16:20] check   → reliability 60% (3/5)
+[22:17:20] size    → $1,000.00 of $10,000
+[22:19:20] execute → SHORT 0.014706 BTC @ $68,000
+
+[22:20:20] observe → funding=-0.000400, price=$67,800
+[22:21:20] monitor → hold
+[22:22:20] observe → funding=-0.000050, price=$67,900
+[22:23:20] exit    → assumption_met (pnl +0.15%)
+[22:24:20] learn   → reliability 3/5 → 4/6 (67%)
+
+[22:26:20] observe → funding=+0.000100, price=$68,100
+[22:27:20] decide  → no signal
+[22:28:20] observe → funding=+0.001200, price=$69,000
+[22:29:20] decide  → LONG
+[22:30:20] declare → "funding_rate_reverts_within_8h"
+[22:31:20] check   → reliability 67% (4/6)
+[22:32:20] size    → $1,666.67 of $10,000
+[22:34:20] execute → LONG 0.024155 BTC @ $69,000
+
+[22:35:20] observe → funding=+0.000080, price=$69,200
+[22:36:20] exit    → assumption_met (pnl +0.29%)
+[22:37:20] learn   → reliability 4/6 → 5/7 (71%)
+
+[22:39:20] observe → funding=-0.000800, price=$68,000
+[22:40:20] decide  → SHORT
+[22:41:20] declare → "funding_rate_reverts_within_8h"
+[22:42:20] check   → reliability 71% (5/7)
+[22:43:20] size    → $2,142.86 of $10,000
+[22:45:20] execute → SHORT 0.031513 BTC @ $68,000
+
+[22:46:20] observe → funding=-0.000400, price=$67,800
+[22:47:20] monitor → hold
+[22:48:20] observe → funding=-0.000050, price=$67,900
+[22:49:20] exit    → assumption_met (pnl +0.15%)
+[22:50:20] learn   → reliability 5/7 → 6/8 (75%)
+
+[22:52:20] observe → funding=+0.000100, price=$68,100
+[22:53:20] decide  → no signal
+[22:54:20] observe → funding=+0.001200, price=$69,000
+[22:55:20] decide  → LONG
+[22:56:20] declare → "funding_rate_reverts_within_8h"
+[22:57:20] check   → reliability 75% (6/8)
+[22:58:20] size    → $2,500.00 of $10,000
+[23:00:20] execute → LONG 0.036232 BTC @ $69,000
+
+[23:01:20] observe → funding=+0.000080, price=$69,200
+[23:02:20] exit    → assumption_met (pnl +0.29%)
+[23:03:20] learn   → reliability 6/8 → 7/9 (78%)
+
