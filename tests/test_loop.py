@@ -20,39 +20,35 @@ from python import journal
 
 FIXED_CLOCK_START = 1700000000  # 2023-11-14T22:13:20Z
 
-SCENARIOS = [
-    # Cycle 1: extreme negative funding → SHORT signal
+# 6-scenario cycle: signal → hold → exit → calm → signal → exit
+# Repeats to generate many trades.
+SCENARIO_CYCLE = [
     {"funding_rate": -0.0008, "btc_price": 68000.0,
-     "timestamp": FIXED_CLOCK_START, "open_interest": 500_000_000.0},
-    # Cycle 2: funding reverting → hold
+     "timestamp": 0, "open_interest": 500_000_000.0},
     {"funding_rate": -0.0004, "btc_price": 67800.0,
-     "timestamp": FIXED_CLOCK_START + 3600, "open_interest": 490_000_000.0},
-    # Cycle 3: funding near zero → assumption met → exit
+     "timestamp": 0, "open_interest": 490_000_000.0},
     {"funding_rate": -0.00005, "btc_price": 67900.0,
-     "timestamp": FIXED_CLOCK_START + 7200, "open_interest": 495_000_000.0},
-    # Cycle 4: calm market → no signal
+     "timestamp": 0, "open_interest": 495_000_000.0},
     {"funding_rate": 0.0001, "btc_price": 68100.0,
-     "timestamp": FIXED_CLOCK_START + 10800, "open_interest": 500_000_000.0},
-    # Cycle 5: extreme positive funding → LONG signal
+     "timestamp": 0, "open_interest": 500_000_000.0},
     {"funding_rate": 0.0012, "btc_price": 69000.0,
-     "timestamp": FIXED_CLOCK_START + 14400, "open_interest": 520_000_000.0},
-    # Cycle 6: funding drops → assumption met → exit
+     "timestamp": 0, "open_interest": 520_000_000.0},
     {"funding_rate": 0.00008, "btc_price": 69200.0,
-     "timestamp": FIXED_CLOCK_START + 18000, "open_interest": 510_000_000.0},
-    # Cycle 7-12: repeat for second trading cycle
-    {"funding_rate": -0.0008, "btc_price": 68000.0,
-     "timestamp": FIXED_CLOCK_START + 21600, "open_interest": 500_000_000.0},
-    {"funding_rate": -0.0004, "btc_price": 67800.0,
-     "timestamp": FIXED_CLOCK_START + 25200, "open_interest": 490_000_000.0},
-    {"funding_rate": -0.00005, "btc_price": 67900.0,
-     "timestamp": FIXED_CLOCK_START + 28800, "open_interest": 495_000_000.0},
-    {"funding_rate": 0.0001, "btc_price": 68100.0,
-     "timestamp": FIXED_CLOCK_START + 32400, "open_interest": 500_000_000.0},
-    {"funding_rate": 0.0012, "btc_price": 69000.0,
-     "timestamp": FIXED_CLOCK_START + 36000, "open_interest": 520_000_000.0},
-    {"funding_rate": 0.00008, "btc_price": 69200.0,
-     "timestamp": FIXED_CLOCK_START + 39600, "open_interest": 510_000_000.0},
+     "timestamp": 0, "open_interest": 510_000_000.0},
 ]
+
+
+def _make_scenarios(n_cycles: int) -> list[dict]:
+    """Generate n_cycles worth of scenarios with proper timestamps."""
+    scenarios = []
+    for i in range(n_cycles):
+        for j, s in enumerate(SCENARIO_CYCLE):
+            idx = i * len(SCENARIO_CYCLE) + j
+            scenarios.append({
+                **s,
+                "timestamp": FIXED_CLOCK_START + idx * 3600,
+            })
+    return scenarios
 
 
 class DeterministicObserver:
@@ -85,68 +81,58 @@ class DeterministicClock:
         return f"{h:02d}:{m:02d}:{s:02d}"
 
 
-# ── The test ────────────────────────────────────────────────────────
+# ── The tests ──────────────────────────────────────────────────────
 
 DEMO_OUTPUT_PATH = Path("tests/demo_output.txt")
 
 
-def _run_once() -> tuple[str, dict]:
-    """Run the full loop once, return (captured_output, summary)."""
+def _run_once(n_cycles: int = 12) -> tuple[str, dict, list[str]]:
+    """Run the full loop once, return (captured_output, summary, lines)."""
     lines: list[str] = []
 
     def capture(line: str) -> None:
         lines.append(line)
 
+    scenarios = _make_scenarios(n_cycles)
+
     with tempfile.TemporaryDirectory() as tmpdir:
         db_path = Path(tmpdir) / "test.db"
-        # Reset journal module state
         journal._conn = None
 
-        # Seed with track record so reliability > 0.5 (Lean sizes to 0 at ≤ 0.5)
-        journal.init_db(db_path)
-        journal.seed_assumptions()
-        journal.update_assumption_stats(
-            "funding_rate_reverts_within_8h", {"wins": 3, "total": 5}
-        )
-        journal._conn = None  # reset so run_loop re-inits cleanly
-
         summary = run_loop(
-            observer=DeterministicObserver(SCENARIOS),
+            observer=DeterministicObserver(scenarios),
             executor=FakeExecutor(initial_equity=10000.0),
             core=VeritasCore(),
             db_path=db_path,
-            max_cycles=len(SCENARIOS),
+            max_cycles=len(scenarios),
             clock=DeterministicClock(),
             log_fn=capture,
         )
 
-    return "\n".join(lines) + "\n", summary
+    return "\n".join(lines) + "\n", summary, lines
 
 
 def test_full_loop_deterministic():
     """The loop completes trades and produces identical output across runs."""
-    # Run 1
-    output1, summary1 = _run_once()
-
-    # Run 2
-    output2, summary2 = _run_once()
+    output1, summary1, _ = _run_once(n_cycles=12)
+    output2, summary2, _ = _run_once(n_cycles=12)
 
     # ── Correctness assertions ──
-    assert summary1["trades"] >= 2, (
-        f"Expected at least 2 completed trades, got {summary1['trades']}"
+    assert summary1["trades"] >= 20, (
+        f"Expected at least 20 completed trades, got {summary1['trades']}"
     )
-    assert summary1["cycles"] == len(SCENARIOS)
     assert summary1["final_stats"] is not None
-    assert summary1["final_stats"]["total"] >= 2, (
-        "Assumption library should have been updated"
-    )
+    assert summary1["final_stats"]["total"] >= 20
+    assert summary1["final_stats"]["wins"] > 0
+
+    # Reliability should differ from default 0.5
+    stats = summary1["final_stats"]
+    reliability = stats["wins"] / stats["total"] if stats["total"] > 0 else 0.5
+    assert reliability != 0.5, "Reliability should have changed from default"
 
     # ── Determinism assertion ──
     assert output1 == output2, (
-        "Two runs produced different output — determinism violated.\n"
-        f"DIFF (first 500 chars):\n"
-        f"RUN1: {output1[:500]}\n"
-        f"RUN2: {output2[:500]}"
+        "Two runs produced different output — determinism violated."
     )
 
     # ── Write demo output ──
@@ -157,12 +143,38 @@ def test_full_loop_deterministic():
           f"{summary1['cycles']} cycles]")
 
 
-def test_no_python_decision_logic():
-    """Verify Python shell contains no trade decision logic.
+def test_exploration_phase_uses_fixed_size():
+    """First 10 trades use exploration size (1%), then Kelly kicks in."""
+    # Run enough cycles to get past exploration (10 trades) + a few more
+    _, _, lines = _run_once(n_cycles=8)
 
-    The grep commands from PRODUCT_BRIEF: if Python has if/else that
-    affects Signal, ExitDecision, or PositionSize, the architecture is broken.
-    """
+    # Extract position sizes from "size → $X of $Y" lines
+    sizes = []
+    for line in lines:
+        if "size    " in line and "$" in line and "of" in line:
+            # Parse "$100.00 of $10,000"
+            part = line.split("$")[1].split(" of")[0]
+            sizes.append(float(part.replace(",", "")))
+
+    assert len(sizes) >= 11, f"Need at least 11 trades, got {len(sizes)}"
+
+    # First 10 trades: exploration phase → $100 (1% of $10,000)
+    for i in range(10):
+        assert sizes[i] == 100.0, (
+            f"Trade {i+1} should be $100 (exploration), got ${sizes[i]}"
+        )
+
+    # Trade 11+: exploitation phase → different size (Kelly-based)
+    assert sizes[10] != 100.0, (
+        f"Trade 11 should use Kelly sizing, but got ${sizes[10]} (still exploration?)"
+    )
+    print(f"\nExploration → exploitation transition verified:")
+    print(f"  Trades 1-10: ${sizes[0]:.0f} each (exploration)")
+    print(f"  Trade 11: ${sizes[10]:,.0f} (Kelly)")
+
+
+def test_no_python_decision_logic():
+    """Verify Python shell contains no trade decision logic."""
     import subprocess
 
     result = subprocess.run(

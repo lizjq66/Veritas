@@ -83,14 +83,14 @@ private def handleExtract (args : List String) : IO UInt32 := do
 
 private def handleSize (args : List String) : IO UInt32 := do
   match args with
-  | [equityS, relS] =>
-    let size := Finance.calculatePositionSize (strToFloat! equityS) (strToFloat! relS)
+  | [equityS, relS, sampleS] =>
+    let size := Finance.calculatePositionSize (strToFloat! equityS) (strToFloat! relS) sampleS.toNat!
     IO.println (jsonObj [jsonNum "position_size" size,
                          jsonNum "equity" (strToFloat! equityS),
                          jsonNum "reliability" (strToFloat! relS)])
     return 0
   | _ =>
-    IO.eprintln "usage: veritas-core size <equity> <reliability>"
+    IO.eprintln "usage: veritas-core size <equity> <reliability> <sample_size>"
     return 1
 
 private def handleMonitor (args : List String) : IO UInt32 := do

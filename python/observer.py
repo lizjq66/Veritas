@@ -7,32 +7,85 @@ Pure I/O: fetches data, returns it as a dict. No decisions.
 
 import time
 
+import requests
+
+
+_TESTNET_URL = "https://api.hyperliquid-testnet.xyz/info"
+_MAINNET_URL = "https://api.hyperliquid.xyz/info"
+
 
 class HyperliquidObserver:
-    """Fetches market data from Hyperliquid."""
+    """Fetches market data from Hyperliquid via REST API."""
 
-    def __init__(self, coin: str = "BTC") -> None:
+    def __init__(self, coin: str = "BTC", *, testnet: bool = True,
+                 wallet_address: str = "") -> None:
         self.coin = coin
-        # SDK client will be initialized with config in v0.1 testnet phase
-        self._client = None
+        self._url = _TESTNET_URL if testnet else _MAINNET_URL
+        self._wallet = wallet_address
+        # Resolve coin index in the universe on first call
+        self._coin_index: int | None = None
+
+    def _post(self, payload: dict) -> dict | list:
+        resp = requests.post(self._url, json=payload, timeout=10)
+        resp.raise_for_status()
+        return resp.json()
+
+    def _resolve_index(self, meta: dict) -> int:
+        """Find the index of self.coin in meta['universe']."""
+        if self._coin_index is not None:
+            return self._coin_index
+        for i, asset in enumerate(meta["universe"]):
+            if asset.get("name") == self.coin:
+                self._coin_index = i
+                return i
+        raise ValueError(f"{self.coin} not found in Hyperliquid universe")
 
     def snapshot(self) -> dict:
-        """Return a MarketSnapshot dict for the Lean core."""
-        if self._client is None:
-            raise NotImplementedError(
-                "Real Hyperliquid observer not yet connected. "
-                "Use FakeObserver for local testing."
-            )
-        # TODO: call self._client for funding, price, OI
-        raise NotImplementedError
+        """Return current market state matching veritas-core's schema:
+        {"funding_rate": float, "btc_price": float,
+         "timestamp": int, "open_interest": float}
+        """
+        data = self._post({"type": "metaAndAssetCtxs"})
+        meta, ctxs = data[0], data[1]
+        idx = self._resolve_index(meta)
+        ctx = ctxs[idx]
+
+        return {
+            "funding_rate": float(ctx["funding"]),
+            "btc_price": float(ctx["markPx"]),
+            "timestamp": int(time.time()),
+            "open_interest": float(ctx["openInterest"]),
+        }
 
     def equity(self) -> float:
         """Return current account equity in USD."""
-        raise NotImplementedError
+        if not self._wallet:
+            raise ValueError("wallet_address required for equity()")
+        state = self._post({
+            "type": "clearinghouseState",
+            "user": self._wallet,
+        })
+        return float(state["marginSummary"]["accountValue"])
 
     def current_position(self) -> dict | None:
-        """Return current open position, or None."""
-        raise NotImplementedError
+        """Return current open position for self.coin, or None."""
+        if not self._wallet:
+            raise ValueError("wallet_address required for current_position()")
+        state = self._post({
+            "type": "clearinghouseState",
+            "user": self._wallet,
+        })
+        for pos in state.get("assetPositions", []):
+            p = pos.get("position", {})
+            if p.get("coin") == self.coin and float(p.get("szi", "0")) != 0:
+                szi = float(p["szi"])
+                return {
+                    "direction": "LONG" if szi > 0 else "SHORT",
+                    "entry_price": float(p["entryPx"]),
+                    "size": abs(szi),
+                    "unrealized_pnl": float(p.get("unrealizedPnl", "0")),
+                }
+        return None
 
 
 class FakeObserver:

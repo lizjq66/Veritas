@@ -148,7 +148,7 @@ def run_loop(
 
                     # Step 5: size (Lean decides)
                     equity = executor.equity()
-                    sizing = core.size(equity, reliability)
+                    sizing = core.size(equity, reliability, stats["total"])
                     pos_size = sizing["position_size"]
 
                     if pos_size <= 0:
@@ -197,18 +197,44 @@ def run_loop(
     }
 
 
-def run(*, fake: bool = True) -> None:
-    """CLI entry point."""
+def run() -> None:
+    """CLI entry point. Use --live to connect to Hyperliquid testnet."""
+    live = "--live" in sys.argv
     core = VeritasCore()
-    observer = FakeObserver() if fake else None
-    executor = FakeExecutor() if fake else None
 
-    if observer is None or executor is None:
-        print("Real Hyperliquid connection not yet implemented.")
-        sys.exit(1)
+    if live:
+        import tomllib
+        from python.observer import HyperliquidObserver
+        from python.executor import HyperliquidExecutor
+
+        cfg_path = Path("config.toml")
+        if not cfg_path.exists():
+            print("config.toml not found. Copy config.example.toml and fill in your private key.")
+            sys.exit(1)
+        with open(cfg_path, "rb") as f:
+            cfg = tomllib.load(f)
+
+        pk = cfg["hyperliquid"]["private_key"]
+        if not pk:
+            print("Set hyperliquid.private_key in config.toml")
+            sys.exit(1)
+
+        coin = cfg.get("strategy", {}).get("coin", "BTC")
+        interval = cfg.get("strategy", {}).get("check_interval_seconds", 60)
+
+        from eth_account import Account
+        wallet = Account.from_key(pk)
+
+        observer = HyperliquidObserver(coin, testnet=True, wallet_address=wallet.address)
+        executor = HyperliquidExecutor(pk, coin, testnet=True)
+    else:
+        observer = FakeObserver()
+        executor = FakeExecutor()
+        interval = 5
 
     try:
-        run_loop(observer=observer, executor=executor, core=core)
+        run_loop(observer=observer, executor=executor, core=core,
+                 max_cycles=0 if live else 0)
     except KeyboardInterrupt:
         print("\nshutting down")
 

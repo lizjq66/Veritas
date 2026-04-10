@@ -57,9 +57,9 @@ class VeritasCore:
         ])
         return result if result else []
 
-    def size(self, equity: float, reliability: float) -> dict:
+    def size(self, equity: float, reliability: float, sample_size: int) -> dict:
         """Step 5: Ask Lean core for position size."""
-        return self._call("size", [str(equity), str(reliability)])
+        return self._call("size", [str(equity), str(reliability), str(sample_size)])
 
     def monitor(self, snapshot: dict, position: dict) -> dict:
         """Step 7: Ask Lean core whether to exit."""
