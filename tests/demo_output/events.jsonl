@@ -1,0 +1,264 @@
+{"ts": "22:13:20", "step": "observe", "detail": "funding=-0.000800, price=$68,000"}
+{"ts": "22:14:20", "step": "decide", "detail": "SHORT"}
+{"ts": "22:15:20", "step": "declare", "detail": "\"funding_rate_reverts_within_8h\""}
+{"ts": "22:16:20", "step": "check", "detail": "reliability 50% (0/0)"}
+{"ts": "22:17:20", "step": "size", "detail": "$100.00 of $10,000"}
+{"ts": "22:19:20", "step": "execute", "detail": "SHORT 0.001471 BTC @ $68,000"}
+{"ts": "22:20:20", "step": "observe", "detail": "funding=-0.000400, price=$67,800"}
+{"ts": "22:21:20", "step": "monitor", "detail": "hold"}
+{"ts": "22:22:20", "step": "observe", "detail": "funding=-0.000050, price=$67,900"}
+{"ts": "22:23:20", "step": "exit", "detail": "assumption_met (pnl +0.15%)"}
+{"ts": "22:24:20", "step": "learn", "detail": "reliability 0/0 \u2192 1/1 (100%)"}
+{"ts": "22:26:20", "step": "observe", "detail": "funding=+0.000100, price=$68,100"}
+{"ts": "22:27:20", "step": "decide", "detail": "no signal"}
+{"ts": "22:28:20", "step": "observe", "detail": "funding=+0.001200, price=$69,000"}
+{"ts": "22:29:20", "step": "decide", "detail": "LONG"}
+{"ts": "22:30:20", "step": "declare", "detail": "\"funding_rate_reverts_within_8h\""}
+{"ts": "22:31:20", "step": "check", "detail": "reliability 100% (1/1)"}
+{"ts": "22:32:20", "step": "size", "detail": "$100.00 of $10,000"}
+{"ts": "22:34:20", "step": "execute", "detail": "LONG 0.001449 BTC @ $69,000"}
+{"ts": "22:35:20", "step": "observe", "detail": "funding=+0.000080, price=$69,200"}
+{"ts": "22:36:20", "step": "exit", "detail": "assumption_met (pnl +0.29%)"}
+{"ts": "22:37:20", "step": "learn", "detail": "reliability 1/1 \u2192 2/2 (100%)"}
+{"ts": "22:39:20", "step": "observe", "detail": "funding=-0.000800, price=$68,000"}
+{"ts": "22:40:20", "step": "decide", "detail": "SHORT"}
+{"ts": "22:41:20", "step": "declare", "detail": "\"funding_rate_reverts_within_8h\""}
+{"ts": "22:42:20", "step": "check", "detail": "reliability 100% (2/2)"}
+{"ts": "22:43:20", "step": "size", "detail": "$100.00 of $10,000"}
+{"ts": "22:45:20", "step": "execute", "detail": "SHORT 0.001471 BTC @ $68,000"}
+{"ts": "22:46:20", "step": "observe", "detail": "funding=-0.000400, price=$67,800"}
+{"ts": "22:47:20", "step": "monitor", "detail": "hold"}
+{"ts": "22:48:20", "step": "observe", "detail": "funding=-0.000050, price=$67,900"}
+{"ts": "22:49:20", "step": "exit", "detail": "assumption_met (pnl +0.15%)"}
+{"ts": "22:50:20", "step": "learn", "detail": "reliability 2/2 \u2192 3/3 (100%)"}
+{"ts": "22:52:20", "step": "observe", "detail": "funding=+0.000100, price=$68,100"}
+{"ts": "22:53:20", "step": "decide", "detail": "no signal"}
+{"ts": "22:54:20", "step": "observe", "detail": "funding=+0.001200, price=$69,000"}
+{"ts": "22:55:20", "step": "decide", "detail": "LONG"}
+{"ts": "22:56:20", "step": "declare", "detail": "\"funding_rate_reverts_within_8h\""}
+{"ts": "22:57:20", "step": "check", "detail": "reliability 100% (3/3)"}
+{"ts": "22:58:20", "step": "size", "detail": "$100.00 of $10,000"}
+{"ts": "23:00:20", "step": "execute", "detail": "LONG 0.001449 BTC @ $69,000"}
+{"ts": "23:01:20", "step": "observe", "detail": "funding=+0.000080, price=$69,200"}
+{"ts": "23:02:20", "step": "exit", "detail": "assumption_met (pnl +0.29%)"}
+{"ts": "23:03:20", "step": "learn", "detail": "reliability 3/3 \u2192 4/4 (100%)"}
+{"ts": "23:05:20", "step": "observe", "detail": "funding=-0.000800, price=$68,000"}
+{"ts": "23:06:20", "step": "decide", "detail": "SHORT"}
+{"ts": "23:07:20", "step": "declare", "detail": "\"funding_rate_reverts_within_8h\""}
+{"ts": "23:08:20", "step": "check", "detail": "reliability 100% (4/4)"}
+{"ts": "23:09:20", "step": "size", "detail": "$100.00 of $10,000"}
+{"ts": "23:11:20", "step": "execute", "detail": "SHORT 0.001471 BTC @ $68,000"}
+{"ts": "23:12:20", "step": "observe", "detail": "funding=-0.000400, price=$67,800"}
+{"ts": "23:13:20", "step": "monitor", "detail": "hold"}
+{"ts": "23:14:20", "step": "observe", "detail": "funding=-0.000050, price=$67,900"}
+{"ts": "23:15:20", "step": "exit", "detail": "assumption_met (pnl +0.15%)"}
+{"ts": "23:16:20", "step": "learn", "detail": "reliability 4/4 \u2192 5/5 (100%)"}
+{"ts": "23:18:20", "step": "observe", "detail": "funding=+0.000100, price=$68,100"}
+{"ts": "23:19:20", "step": "decide", "detail": "no signal"}
+{"ts": "23:20:20", "step": "observe", "detail": "funding=+0.001200, price=$69,000"}
+{"ts": "23:21:20", "step": "decide", "detail": "LONG"}
+{"ts": "23:22:20", "step": "declare", "detail": "\"funding_rate_reverts_within_8h\""}
+{"ts": "23:23:20", "step": "check", "detail": "reliability 100% (5/5)"}
+{"ts": "23:24:20", "step": "size", "detail": "$100.00 of $10,000"}
+{"ts": "23:26:20", "step": "execute", "detail": "LONG 0.001449 BTC @ $69,000"}
+{"ts": "23:27:20", "step": "observe", "detail": "funding=+0.000080, price=$69,200"}
+{"ts": "23:28:20", "step": "exit", "detail": "assumption_met (pnl +0.29%)"}
+{"ts": "23:29:20", "step": "learn", "detail": "reliability 5/5 \u2192 6/6 (100%)"}
+{"ts": "23:31:20", "step": "observe", "detail": "funding=-0.000800, price=$68,000"}
+{"ts": "23:32:20", "step": "decide", "detail": "SHORT"}
+{"ts": "23:33:20", "step": "declare", "detail": "\"funding_rate_reverts_within_8h\""}
+{"ts": "23:34:20", "step": "check", "detail": "reliability 100% (6/6)"}
+{"ts": "23:35:20", "step": "size", "detail": "$100.00 of $10,000"}
+{"ts": "23:37:20", "step": "execute", "detail": "SHORT 0.001471 BTC @ $68,000"}
+{"ts": "23:38:20", "step": "observe", "detail": "funding=-0.000400, price=$67,800"}
+{"ts": "23:39:20", "step": "monitor", "detail": "hold"}
+{"ts": "23:40:20", "step": "observe", "detail": "funding=-0.000050, price=$67,900"}
+{"ts": "23:41:20", "step": "exit", "detail": "assumption_met (pnl +0.15%)"}
+{"ts": "23:42:20", "step": "learn", "detail": "reliability 6/6 \u2192 7/7 (100%)"}
+{"ts": "23:44:20", "step": "observe", "detail": "funding=+0.000100, price=$68,100"}
+{"ts": "23:45:20", "step": "decide", "detail": "no signal"}
+{"ts": "23:46:20", "step": "observe", "detail": "funding=+0.001200, price=$69,000"}
+{"ts": "23:47:20", "step": "decide", "detail": "LONG"}
+{"ts": "23:48:20", "step": "declare", "detail": "\"funding_rate_reverts_within_8h\""}
+{"ts": "23:49:20", "step": "check", "detail": "reliability 100% (7/7)"}
+{"ts": "23:50:20", "step": "size", "detail": "$100.00 of $10,000"}
+{"ts": "23:52:20", "step": "execute", "detail": "LONG 0.001449 BTC @ $69,000"}
+{"ts": "23:53:20", "step": "observe", "detail": "funding=+0.000080, price=$69,200"}
+{"ts": "23:54:20", "step": "exit", "detail": "assumption_met (pnl +0.29%)"}
+{"ts": "23:55:20", "step": "learn", "detail": "reliability 7/7 \u2192 8/8 (100%)"}
+{"ts": "23:57:20", "step": "observe", "detail": "funding=-0.000800, price=$68,000"}
+{"ts": "23:58:20", "step": "decide", "detail": "SHORT"}
+{"ts": "23:59:20", "step": "declare", "detail": "\"funding_rate_reverts_within_8h\""}
+{"ts": "00:00:20", "step": "check", "detail": "reliability 100% (8/8)"}
+{"ts": "00:01:20", "step": "size", "detail": "$100.00 of $10,000"}
+{"ts": "00:03:20", "step": "execute", "detail": "SHORT 0.001471 BTC @ $68,000"}
+{"ts": "00:04:20", "step": "observe", "detail": "funding=-0.000400, price=$67,800"}
+{"ts": "00:05:20", "step": "monitor", "detail": "hold"}
+{"ts": "00:06:20", "step": "observe", "detail": "funding=-0.000050, price=$67,900"}
+{"ts": "00:07:20", "step": "exit", "detail": "assumption_met (pnl +0.15%)"}
+{"ts": "00:08:20", "step": "learn", "detail": "reliability 8/8 \u2192 9/9 (100%)"}
+{"ts": "00:10:20", "step": "observe", "detail": "funding=+0.000100, price=$68,100"}
+{"ts": "00:11:20", "step": "decide", "detail": "no signal"}
+{"ts": "00:12:20", "step": "observe", "detail": "funding=+0.001200, price=$69,000"}
+{"ts": "00:13:20", "step": "decide", "detail": "LONG"}
+{"ts": "00:14:20", "step": "declare", "detail": "\"funding_rate_reverts_within_8h\""}
+{"ts": "00:15:20", "step": "check", "detail": "reliability 100% (9/9)"}
+{"ts": "00:16:20", "step": "size", "detail": "$100.00 of $10,000"}
+{"ts": "00:18:20", "step": "execute", "detail": "LONG 0.001449 BTC @ $69,000"}
+{"ts": "00:19:20", "step": "observe", "detail": "funding=+0.000080, price=$69,200"}
+{"ts": "00:20:20", "step": "exit", "detail": "assumption_met (pnl +0.29%)"}
+{"ts": "00:21:20", "step": "learn", "detail": "reliability 9/9 \u2192 10/10 (100%)"}
+{"ts": "00:23:20", "step": "observe", "detail": "funding=-0.000800, price=$68,000"}
+{"ts": "00:24:20", "step": "decide", "detail": "SHORT"}
+{"ts": "00:25:20", "step": "declare", "detail": "\"funding_rate_reverts_within_8h\""}
+{"ts": "00:26:20", "step": "check", "detail": "reliability 100% (10/10)"}
+{"ts": "00:27:20", "step": "size", "detail": "$2,500.00 of $10,000"}
+{"ts": "00:29:20", "step": "execute", "detail": "SHORT 0.036765 BTC @ $68,000"}
+{"ts": "00:30:20", "step": "observe", "detail": "funding=-0.000400, price=$67,800"}
+{"ts": "00:31:20", "step": "monitor", "detail": "hold"}
+{"ts": "00:32:20", "step": "observe", "detail": "funding=-0.000050, price=$67,900"}
+{"ts": "00:33:20", "step": "exit", "detail": "assumption_met (pnl +0.15%)"}
+{"ts": "00:34:20", "step": "learn", "detail": "reliability 10/10 \u2192 11/11 (100%)"}
+{"ts": "00:36:20", "step": "observe", "detail": "funding=+0.000100, price=$68,100"}
+{"ts": "00:37:20", "step": "decide", "detail": "no signal"}
+{"ts": "00:38:20", "step": "observe", "detail": "funding=+0.001200, price=$69,000"}
+{"ts": "00:39:20", "step": "decide", "detail": "LONG"}
+{"ts": "00:40:20", "step": "declare", "detail": "\"funding_rate_reverts_within_8h\""}
+{"ts": "00:41:20", "step": "check", "detail": "reliability 100% (11/11)"}
+{"ts": "00:42:20", "step": "size", "detail": "$2,500.00 of $10,000"}
+{"ts": "00:44:20", "step": "execute", "detail": "LONG 0.036232 BTC @ $69,000"}
+{"ts": "00:45:20", "step": "observe", "detail": "funding=+0.000080, price=$69,200"}
+{"ts": "00:46:20", "step": "exit", "detail": "assumption_met (pnl +0.29%)"}
+{"ts": "00:47:20", "step": "learn", "detail": "reliability 11/11 \u2192 12/12 (100%)"}
+{"ts": "00:49:20", "step": "observe", "detail": "funding=-0.000800, price=$68,000"}
+{"ts": "00:50:20", "step": "decide", "detail": "SHORT"}
+{"ts": "00:51:20", "step": "declare", "detail": "\"funding_rate_reverts_within_8h\""}
+{"ts": "00:52:20", "step": "check", "detail": "reliability 100% (12/12)"}
+{"ts": "00:53:20", "step": "size", "detail": "$2,500.00 of $10,000"}
+{"ts": "00:55:20", "step": "execute", "detail": "SHORT 0.036765 BTC @ $68,000"}
+{"ts": "00:56:20", "step": "observe", "detail": "funding=-0.000400, price=$67,800"}
+{"ts": "00:57:20", "step": "monitor", "detail": "hold"}
+{"ts": "00:58:20", "step": "observe", "detail": "funding=-0.000050, price=$67,900"}
+{"ts": "00:59:20", "step": "exit", "detail": "assumption_met (pnl +0.15%)"}
+{"ts": "01:00:20", "step": "learn", "detail": "reliability 12/12 \u2192 13/13 (100%)"}
+{"ts": "01:02:20", "step": "observe", "detail": "funding=+0.000100, price=$68,100"}
+{"ts": "01:03:20", "step": "decide", "detail": "no signal"}
+{"ts": "01:04:20", "step": "observe", "detail": "funding=+0.001200, price=$69,000"}
+{"ts": "01:05:20", "step": "decide", "detail": "LONG"}
+{"ts": "01:06:20", "step": "declare", "detail": "\"funding_rate_reverts_within_8h\""}
+{"ts": "01:07:20", "step": "check", "detail": "reliability 100% (13/13)"}
+{"ts": "01:08:20", "step": "size", "detail": "$2,500.00 of $10,000"}
+{"ts": "01:10:20", "step": "execute", "detail": "LONG 0.036232 BTC @ $69,000"}
+{"ts": "01:11:20", "step": "observe", "detail": "funding=+0.000080, price=$69,200"}
+{"ts": "01:12:20", "step": "exit", "detail": "assumption_met (pnl +0.29%)"}
+{"ts": "01:13:20", "step": "learn", "detail": "reliability 13/13 \u2192 14/14 (100%)"}
+{"ts": "01:15:20", "step": "observe", "detail": "funding=-0.000800, price=$68,000"}
+{"ts": "01:16:20", "step": "decide", "detail": "SHORT"}
+{"ts": "01:17:20", "step": "declare", "detail": "\"funding_rate_reverts_within_8h\""}
+{"ts": "01:18:20", "step": "check", "detail": "reliability 100% (14/14)"}
+{"ts": "01:19:20", "step": "size", "detail": "$2,500.00 of $10,000"}
+{"ts": "01:21:20", "step": "execute", "detail": "SHORT 0.036765 BTC @ $68,000"}
+{"ts": "01:22:20", "step": "observe", "detail": "funding=-0.000400, price=$67,800"}
+{"ts": "01:23:20", "step": "monitor", "detail": "hold"}
+{"ts": "01:24:20", "step": "observe", "detail": "funding=-0.000050, price=$67,900"}
+{"ts": "01:25:20", "step": "exit", "detail": "assumption_met (pnl +0.15%)"}
+{"ts": "01:26:20", "step": "learn", "detail": "reliability 14/14 \u2192 15/15 (100%)"}
+{"ts": "01:28:20", "step": "observe", "detail": "funding=+0.000100, price=$68,100"}
+{"ts": "01:29:20", "step": "decide", "detail": "no signal"}
+{"ts": "01:30:20", "step": "observe", "detail": "funding=+0.001200, price=$69,000"}
+{"ts": "01:31:20", "step": "decide", "detail": "LONG"}
+{"ts": "01:32:20", "step": "declare", "detail": "\"funding_rate_reverts_within_8h\""}
+{"ts": "01:33:20", "step": "check", "detail": "reliability 100% (15/15)"}
+{"ts": "01:34:20", "step": "size", "detail": "$2,500.00 of $10,000"}
+{"ts": "01:36:20", "step": "execute", "detail": "LONG 0.036232 BTC @ $69,000"}
+{"ts": "01:37:20", "step": "observe", "detail": "funding=+0.000080, price=$69,200"}
+{"ts": "01:38:20", "step": "exit", "detail": "assumption_met (pnl +0.29%)"}
+{"ts": "01:39:20", "step": "learn", "detail": "reliability 15/15 \u2192 16/16 (100%)"}
+{"ts": "01:41:20", "step": "observe", "detail": "funding=-0.000800, price=$68,000"}
+{"ts": "01:42:20", "step": "decide", "detail": "SHORT"}
+{"ts": "01:43:20", "step": "declare", "detail": "\"funding_rate_reverts_within_8h\""}
+{"ts": "01:44:20", "step": "check", "detail": "reliability 100% (16/16)"}
+{"ts": "01:45:20", "step": "size", "detail": "$2,500.00 of $10,000"}
+{"ts": "01:47:20", "step": "execute", "detail": "SHORT 0.036765 BTC @ $68,000"}
+{"ts": "01:48:20", "step": "observe", "detail": "funding=-0.000400, price=$67,800"}
+{"ts": "01:49:20", "step": "monitor", "detail": "hold"}
+{"ts": "01:50:20", "step": "observe", "detail": "funding=-0.000050, price=$67,900"}
+{"ts": "01:51:20", "step": "exit", "detail": "assumption_met (pnl +0.15%)"}
+{"ts": "01:52:20", "step": "learn", "detail": "reliability 16/16 \u2192 17/17 (100%)"}
+{"ts": "01:54:20", "step": "observe", "detail": "funding=+0.000100, price=$68,100"}
+{"ts": "01:55:20", "step": "decide", "detail": "no signal"}
+{"ts": "01:56:20", "step": "observe", "detail": "funding=+0.001200, price=$69,000"}
+{"ts": "01:57:20", "step": "decide", "detail": "LONG"}
+{"ts": "01:58:20", "step": "declare", "detail": "\"funding_rate_reverts_within_8h\""}
+{"ts": "01:59:20", "step": "check", "detail": "reliability 100% (17/17)"}
+{"ts": "02:00:20", "step": "size", "detail": "$2,500.00 of $10,000"}
+{"ts": "02:02:20", "step": "execute", "detail": "LONG 0.036232 BTC @ $69,000"}
+{"ts": "02:03:20", "step": "observe", "detail": "funding=+0.000080, price=$69,200"}
+{"ts": "02:04:20", "step": "exit", "detail": "assumption_met (pnl +0.29%)"}
+{"ts": "02:05:20", "step": "learn", "detail": "reliability 17/17 \u2192 18/18 (100%)"}
+{"ts": "02:07:20", "step": "observe", "detail": "funding=-0.000800, price=$68,000"}
+{"ts": "02:08:20", "step": "decide", "detail": "SHORT"}
+{"ts": "02:09:20", "step": "declare", "detail": "\"funding_rate_reverts_within_8h\""}
+{"ts": "02:10:20", "step": "check", "detail": "reliability 100% (18/18)"}
+{"ts": "02:11:20", "step": "size", "detail": "$2,500.00 of $10,000"}
+{"ts": "02:13:20", "step": "execute", "detail": "SHORT 0.036765 BTC @ $68,000"}
+{"ts": "02:14:20", "step": "observe", "detail": "funding=-0.000400, price=$67,800"}
+{"ts": "02:15:20", "step": "monitor", "detail": "hold"}
+{"ts": "02:16:20", "step": "observe", "detail": "funding=-0.000050, price=$67,900"}
+{"ts": "02:17:20", "step": "exit", "detail": "assumption_met (pnl +0.15%)"}
+{"ts": "02:18:20", "step": "learn", "detail": "reliability 18/18 \u2192 19/19 (100%)"}
+{"ts": "02:20:20", "step": "observe", "detail": "funding=+0.000100, price=$68,100"}
+{"ts": "02:21:20", "step": "decide", "detail": "no signal"}
+{"ts": "02:22:20", "step": "observe", "detail": "funding=+0.001200, price=$69,000"}
+{"ts": "02:23:20", "step": "decide", "detail": "LONG"}
+{"ts": "02:24:20", "step": "declare", "detail": "\"funding_rate_reverts_within_8h\""}
+{"ts": "02:25:20", "step": "check", "detail": "reliability 100% (19/19)"}
+{"ts": "02:26:20", "step": "size", "detail": "$2,500.00 of $10,000"}
+{"ts": "02:28:20", "step": "execute", "detail": "LONG 0.036232 BTC @ $69,000"}
+{"ts": "02:29:20", "step": "observe", "detail": "funding=+0.000080, price=$69,200"}
+{"ts": "02:30:20", "step": "exit", "detail": "assumption_met (pnl +0.29%)"}
+{"ts": "02:31:20", "step": "learn", "detail": "reliability 19/19 \u2192 20/20 (100%)"}
+{"ts": "02:33:20", "step": "observe", "detail": "funding=-0.000800, price=$68,000"}
+{"ts": "02:34:20", "step": "decide", "detail": "SHORT"}
+{"ts": "02:35:20", "step": "declare", "detail": "\"funding_rate_reverts_within_8h\""}
+{"ts": "02:36:20", "step": "check", "detail": "reliability 100% (20/20)"}
+{"ts": "02:37:20", "step": "size", "detail": "$2,500.00 of $10,000"}
+{"ts": "02:39:20", "step": "execute", "detail": "SHORT 0.036765 BTC @ $68,000"}
+{"ts": "02:40:20", "step": "observe", "detail": "funding=-0.000400, price=$67,800"}
+{"ts": "02:41:20", "step": "monitor", "detail": "hold"}
+{"ts": "02:42:20", "step": "observe", "detail": "funding=-0.000050, price=$67,900"}
+{"ts": "02:43:20", "step": "exit", "detail": "assumption_met (pnl +0.15%)"}
+{"ts": "02:44:20", "step": "learn", "detail": "reliability 20/20 \u2192 21/21 (100%)"}
+{"ts": "02:46:20", "step": "observe", "detail": "funding=+0.000100, price=$68,100"}
+{"ts": "02:47:20", "step": "decide", "detail": "no signal"}
+{"ts": "02:48:20", "step": "observe", "detail": "funding=+0.001200, price=$69,000"}
+{"ts": "02:49:20", "step": "decide", "detail": "LONG"}
+{"ts": "02:50:20", "step": "declare", "detail": "\"funding_rate_reverts_within_8h\""}
+{"ts": "02:51:20", "step": "check", "detail": "reliability 100% (21/21)"}
+{"ts": "02:52:20", "step": "size", "detail": "$2,500.00 of $10,000"}
+{"ts": "02:54:20", "step": "execute", "detail": "LONG 0.036232 BTC @ $69,000"}
+{"ts": "02:55:20", "step": "observe", "detail": "funding=+0.000080, price=$69,200"}
+{"ts": "02:56:20", "step": "exit", "detail": "assumption_met (pnl +0.29%)"}
+{"ts": "02:57:20", "step": "learn", "detail": "reliability 21/21 \u2192 22/22 (100%)"}
+{"ts": "02:59:20", "step": "observe", "detail": "funding=-0.000800, price=$68,000"}
+{"ts": "03:00:20", "step": "decide", "detail": "SHORT"}
+{"ts": "03:01:20", "step": "declare", "detail": "\"funding_rate_reverts_within_8h\""}
+{"ts": "03:02:20", "step": "check", "detail": "reliability 100% (22/22)"}
+{"ts": "03:03:20", "step": "size", "detail": "$2,500.00 of $10,000"}
+{"ts": "03:05:20", "step": "execute", "detail": "SHORT 0.036765 BTC @ $68,000"}
+{"ts": "03:06:20", "step": "observe", "detail": "funding=-0.000400, price=$67,800"}
+{"ts": "03:07:20", "step": "monitor", "detail": "hold"}
+{"ts": "03:08:20", "step": "observe", "detail": "funding=-0.000050, price=$67,900"}
+{"ts": "03:09:20", "step": "exit", "detail": "assumption_met (pnl +0.15%)"}
+{"ts": "03:10:20", "step": "learn", "detail": "reliability 22/22 \u2192 23/23 (100%)"}
+{"ts": "03:12:20", "step": "observe", "detail": "funding=+0.000100, price=$68,100"}
+{"ts": "03:13:20", "step": "decide", "detail": "no signal"}
+{"ts": "03:14:20", "step": "observe", "detail": "funding=+0.001200, price=$69,000"}
+{"ts": "03:15:20", "step": "decide", "detail": "LONG"}
+{"ts": "03:16:20", "step": "declare", "detail": "\"funding_rate_reverts_within_8h\""}
+{"ts": "03:17:20", "step": "check", "detail": "reliability 100% (23/23)"}
+{"ts": "03:18:20", "step": "size", "detail": "$2,500.00 of $10,000"}
+{"ts": "03:20:20", "step": "execute", "detail": "LONG 0.036232 BTC @ $69,000"}
+{"ts": "03:21:20", "step": "observe", "detail": "funding=+0.000080, price=$69,200"}
+{"ts": "03:22:20", "step": "exit", "detail": "assumption_met (pnl +0.29%)"}
+{"ts": "03:23:20", "step": "learn", "detail": "reliability 23/23 \u2192 24/24 (100%)"}
