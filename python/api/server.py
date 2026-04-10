@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from python.api.middleware import ReadOnlyMiddleware
+from python.api.routes import state, assumptions, trades, verify
 
 log = logging.getLogger("veritas.api")
 
@@ -30,6 +31,11 @@ app = FastAPI(
 )
 
 app.add_middleware(ReadOnlyMiddleware)
+
+app.include_router(state.router)
+app.include_router(assumptions.router)
+app.include_router(trades.router)
+app.include_router(verify.router)
 
 
 @app.get("/health")

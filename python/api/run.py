@@ -3,6 +3,9 @@
 Usage:
     python -m python.api.run
     python -m python.api.run --port 8080
+
+To serve the demo journal instead of the live one:
+    VERITAS_DB_PATH=tests/demo_output/journal.db python -m python.api.run
 """
 
 from __future__ import annotations
