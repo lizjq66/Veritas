@@ -36,6 +36,7 @@ def run_loop(
     max_cycles: int = 0,
     clock: Callable[[], str] | None = None,
     log_fn: Callable[[str], None] | None = None,
+    on_event: Callable[[dict], None] | None = None,
 ) -> dict:
     """Run the 8-step loop with injected dependencies.
 
@@ -56,6 +57,10 @@ def run_loop(
             log_fn(msg)
         else:
             print(msg)
+
+    def _emit(event_type: str, **payload: object) -> None:
+        if on_event is not None:
+            on_event({"type": event_type, "timestamp": clock(), **payload})
 
     journal.init_db(db_path)
     journal.seed_assumptions()
@@ -82,6 +87,7 @@ def run_loop(
         snapshot = observer.snapshot()
         _log(f"observe \u2192 funding={snapshot['funding_rate']:+.6f}, "
              f"price=${snapshot['btc_price']:,.0f}")
+        _emit("observe", snapshot=snapshot)
 
         if position is not None:
             # ── Steps 7-8: monitor → learn ──
@@ -93,6 +99,7 @@ def run_loop(
                 result = executor.close_position(snapshot["btc_price"])
                 pnl = result.get("pnl_pct", 0.0)
                 _log(f"exit    \u2192 {reason} (pnl {pnl:+.2f}%)")
+                _emit("execute_close", reason=reason, pnl=pnl, exit_price=snapshot["btc_price"])
 
                 # Step 8: learn — ask Lean for new stats
                 stats = journal.get_assumption_stats(position["assumption_name"])
@@ -103,6 +110,8 @@ def run_loop(
                          f"{stats['wins']}/{stats['total']} \u2192 "
                          f"{new_stats['wins']}/{new_stats['total']} "
                          f"({new_stats['reliability']:.0%})")
+                    _emit("learn", assumption=position["assumption_name"],
+                          old_stats=stats, new_stats=new_stats)
 
                 # Record trade
                 journal.record_trade(
@@ -121,14 +130,17 @@ def run_loop(
                 _print()
             else:
                 _log("monitor \u2192 hold")
+                _emit("monitor", action="hold")
         else:
             # ── Steps 2-6: decide → execute ──
             signal = core.decide(snapshot)
 
             if signal is None:
                 _log("decide  \u2192 no signal")
+                _emit("decide", signal=None)
             else:
                 _log(f"decide  \u2192 {signal['direction']}")
+                _emit("decide", signal=signal)
 
                 # Step 3: declare
                 assumptions = core.extract(signal)
@@ -150,6 +162,9 @@ def run_loop(
                     equity = executor.equity()
                     sizing = core.size(equity, reliability, stats["total"])
                     pos_size = sizing["position_size"]
+
+                    _emit("size", position_size=pos_size, equity=equity,
+                          reliability=reliability, sample_size=stats["total"])
 
                     if pos_size <= 0:
                         _log("size    \u2192 0 (no edge, skipping)")
@@ -182,6 +197,9 @@ def run_loop(
                             _log(f"execute \u2192 {signal['direction']} "
                                  f"{result['size']:.6f} BTC @ "
                                  f"${result['price']:,.0f}")
+                            _emit("execute_open", direction=signal["direction"],
+                                  price=result["price"], size=result["size"],
+                                  assumption=aname)
                         else:
                             _log(f"execute \u2192 FAILED: {result.get('error')}")
                     _print()
