@@ -1,98 +1,176 @@
 # Veritas
 
-> Trust infrastructure for agent-native finance.
+**Formally verified trading decisions. Lean 4 core, Python I/O shell, assumption-first architecture.**
 
-A trading agent on Hyperliquid that **knows what it's betting on**, **monitors whether the bet still holds**, and **gets smarter every time it's wrong**.
+A trading agent whose sizing, exit logic, and learning rules are Lean 4 theorems — not Python if/else. The Lean core compiles to a native binary; Python only handles I/O. Any claim Veritas makes about its behavior is backed by a proof or an explicit axiom, never by "trust me."
 
-Unlike existing trading bots — static rule engines with no intelligence, or LLM black boxes that can't explain themselves — Veritas enforces assumption-first trading. Every trade has an explicit, falsifiable hypothesis. Every exit is categorized. Every outcome updates the agent's understanding.
+```
+$ ./veritas-core size 10000 0.75 15
+{ "position_size": 2500.000000, "equity": 10000.000000, "reliability": 0.750000 }
+```
 
-## Quickstart
+## What it looks like running
+
+```
+Veritas v0.1 | Lean-native core | BTC-USDC perp
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Core: veritas-core (Lean 4, compiled to native)
+Proven theorems: 9/9 | Sorry count: 0 | Axioms: 20
+
+[12:03:01] observe → funding=-0.000800, price=$68,000
+[12:03:01] decide  → SHORT                              ← Lean core
+[12:03:01] declare → "funding_rate_reverts_within_8h"    ← explicit assumption
+[12:03:01] check   → reliability 50% (0/0)
+[12:03:01] size    → $100.00 of $10,000                  ← exploration phase (1%)
+[12:03:01] execute → SHORT 0.001471 BTC @ $68,000
+
+[12:03:04] observe → funding=-0.000050, price=$67,900
+[12:03:04] exit    → assumption_met (pnl +0.15%)         ← categorized exit
+[12:03:04] learn   → reliability 0/0 → 1/1 (100%)       ← library updated
+```
+
+Every decision comes from the compiled Lean binary. Python passes data in, reads the decision out, and talks to Hyperliquid. `grep -rE "if.*(Signal|ExitDecision|PositionSize)" python/` returns nothing.
+
+## Quick Start
 
 ```bash
-git clone https://github.com/[you]/veritas && cd veritas
+git clone https://github.com/lizjq66/Veritas && cd Veritas
+
+# Build the Lean core (requires elan — https://github.com/leanprover/elan)
+lake build                            # compiles veritas-core binary
+
+# Run with fake market data (no API keys needed)
 pip install -r requirements.txt
-cp config.example.toml config.toml
-# Edit config.toml: add your Hyperliquid testnet private key
-python -m veritas.main
+python -m pytest tests/test_loop.py -v
+
+# See the results
+cat tests/demo_output/summary.md      # 24 trades, reliability evolution
+sqlite3 tests/demo_output/journal.db "SELECT * FROM trades LIMIT 5"
 ```
 
-## v0.1 Scope
+To see it live with a dashboard:
 
-- **One exchange**: Hyperliquid (testnet only)
-- **One pair**: BTC-USDC perpetual
-- **One strategy**: Funding rate mean reversion
-- **One loop**: Observe → Decide → Declare → Size → Execute → Monitor → Exit → Learn
-
-## How It Works
-
+```bash
+VERITAS_LIVE_MODE=1 python -m python.api.run
+# Open http://localhost:8000 — watch trades happen in real time
 ```
-1. Observe   — fetch BTC funding rate, price, positions from Hyperliquid
-2. Decide    — signal when funding rate hits extreme levels
-3. Declare   — record the explicit assumption being bet on
-4. Size      — scale position with assumption's historical reliability
-5. Execute   — open position on Hyperliquid testnet
-6. Monitor   — check every minute: does the assumption still hold?
-7. Exit      — close when assumption confirmed, broken, or hard stop hit
-8. Learn     — update assumption reliability from the outcome
-```
-
-Every trade is logged with its assumptions and exit reason. The assumption library persists across restarts — the agent improves over time.
 
 ## Architecture
 
 ```
-veritas/
-├── main.py         # Eight-step loop orchestration
-├── observer.py     # Market data from Hyperliquid
-├── decider.py      # Entry signal logic
-├── extractor.py    # Assumption declaration
-├── checker.py      # Historical reliability lookup
-├── sizer.py        # Reliability-based position sizing
-├── executor.py     # Order execution (open/close)
-├── monitor.py      # Live assumption monitoring
-├── learner.py      # Post-trade assumption update
-└── journal.py      # SQLite persistence + JSONL logs
+┌─────────────────────────────────────────────────────────────┐
+│ Python I/O Shell                                            │
+│                                                             │
+│   observer.py ── Hyperliquid API ──┐                        │
+│   executor.py ── order placement ──┤   No decision logic.   │
+│   journal.py ─── SQLite read/write │   Python passes data   │
+│   bridge.py ──── subprocess call ──┘   to Lean and back.    │
+│        │                                                    │
+│        │ subprocess + CLI args                              │
+│        ▼                                                    │
+│ ┌─────────────────────────────────────────────────────────┐ │
+│ │ Lean 4 Verified Core (veritas-core binary)              │ │
+│ │                                                         │ │
+│ │   Types.lean ─────── Direction, Signal, Assumption      │ │
+│ │   PositionSizing ─── Kelly sizer + 5 theorems           │ │
+│ │   ExitLogic ──────── 3-way exit + exhaustiveness proof  │ │
+│ │   Reliability ────── Bayesian update + 2 theorems       │ │
+│ │   FundingReversion ─ strategy (decide + extract)        │ │
+│ │   Main.lean ──────── CLI dispatch                       │ │
+│ │                                                         │ │
+│ │   9 theorems proved. 0 sorry. 20 Float axioms.          │ │
+│ └─────────────────────────────────────────────────────────┘ │
+│                                                             │
+│ Observation layer (read-only, no mutation):                  │
+│   REST API ── /state, /assumptions, /trades, /verify        │
+│   Dashboard ─ real-time SSE at http://localhost:8000         │
+│   MCP Server ─ Claude/LLM agents query Veritas as a tool    │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-## Key Invariants
+**Trust boundary**: the Lean binary is the only trusted component. Python is treated as adversarial. Veritas's safety claims apply to the Lean side only. The observation layer (API, dashboard, MCP) is physically read-only — a middleware rejects any non-GET request with 405.
 
-1. Every trade has an explicit assumption declaration — no black-box orders
-2. Every exit is categorized: `assumption_met` / `assumption_broke` / `stop_loss`
-3. Every trade updates the assumption library — persistence survives restarts
-4. Hard stop loss always active — the last line of defense
+## What the theorems guarantee
 
-## Verification Status
+| Theorem | Guarantee |
+|---------|-----------|
+| `positionSize_nonneg` | Position size is never negative |
+| `positionSize_capped` | Position never exceeds 25% of equity |
+| `positionSize_zero_at_no_edge` | Zero position when reliability ≤ 50% |
+| `positionSize_monotone_in_reliability` | Higher reliability = larger position |
+| `positionSize_explorationCapped` | First 10 trades use fixed 1% sizing |
+| `kellyFraction_nonneg` | Kelly fraction is non-negative |
+| `exitReason_exhaustive` | Every exit classified: met / broke / stop_loss |
+| `reliabilityUpdate_monotone_on_wins` | Consecutive wins never decrease reliability |
+| `reliabilityUpdate_bounded` | Reliability stays in [0, 1] |
 
-The Lean 4 core (`Veritas/`) builds with **zero `sorry`**. Every stated theorem has a proof.
+All proofs depend on 20 axioms about IEEE 754 `Float` arithmetic in [`FloatAxioms.lean`](Veritas/Finance/FloatAxioms.lean). 13 are exact (ordering, sign). 7 are rounding-dependent (arithmetic monotonicity) — sound for Veritas's numerical ranges but not universally true. The axiom list is the honest boundary of what we prove vs. what we assume.
 
-| Module | Theorem | Status | Notes |
-|--------|---------|--------|-------|
-| `Finance/PositionSizing` | `positionSize_nonneg` | Proved | |
-| `Finance/PositionSizing` | `positionSize_capped` | Proved | |
-| `Finance/PositionSizing` | `positionSize_monotone_in_reliability` | Proved | |
-| `Finance/PositionSizing` | `positionSize_zero_at_no_edge` | Proved | |
-| `Finance/Kelly` | `kellyFraction_nonneg` | Proved | |
-| `Finance/Kelly` | `kellyFraction_mono` | Proved | |
-| `Strategy/ExitLogic` | `exitReason_exhaustive` | Proved | Pure case split, no axioms |
-| `Learning/Reliability` | `reliabilityUpdate_monotone_on_wins` | Proved | Originally false without `wins ≤ total`; invariant now enforced in the type |
-| `Learning/Reliability` | `reliabilityUpdate_bounded` | Proved | Same — `ReliabilityStats` carries the proof |
+## Three Gates
 
-### What we trust
+Veritas's trust model has three verification gates. v0.1 implements one completely:
 
-All proofs above the `ExitLogic` and `Reliability` module are axiom-free or use only Lean builtins. The `Finance/` proofs depend on **20 axioms** about IEEE 754 `Float` arithmetic in [`Finance/FloatAxioms.lean`](Veritas/Finance/FloatAxioms.lean):
+| Gate | What it checks | v0.1 status |
+|------|---------------|-------------|
+| **Gate 2: Strategy-constraint compatibility** | Position sizing and exit logic satisfy formal bounds regardless of input | **Complete** — 5 proven theorems |
+| Gate 1: Signal consistency | Multiple signals don't contradict each other | Partial — single strategy, degenerates to threshold check |
+| Gate 3: Portfolio interference | Adding a position keeps total risk in bounds | Not started — requires multi-strategy (v0.2) |
 
-| Category | Count | Soundness |
-|----------|-------|-----------|
-| Ordering (`le_refl`, `le_trans`, totality, etc.) | 7 | **Exact** — IEEE 754 comparison is hardware-exact for non-NaN values |
-| Literal equality (`0.0 = 0`) | 1 | **Exact** — both represent IEEE 754 positive zero |
-| Sign preservation (`mul_nonneg`, `div_nonneg`) | 2 | **Exact** — IEEE 754 sign bit is computed exactly |
-| `Nat.toFloat` (nonneg, positivity, monotonicity) | 3 | **Exact** up to 2^53 (integer-exact range of binary64) |
-| Arithmetic monotonicity (`sub_le`, `mul_le`, `div_le`, etc.) | 7 | **Rounding-dependent** — holds when rounding does not reverse the inequality |
+## MCP: Veritas as a tool for other agents
 
-The 7 rounding-dependent axioms are the honest gap. They assume that if the exact real-valued result satisfies `a ≤ b`, the IEEE 754 rounded result preserves the direction. This is not universally true for adversarial Float inputs, but it holds for the magnitudes Veritas operates on (probabilities in [0, 1], small integer counters, Kelly fractions). We accept this as a pragmatic modelling assumption. See the doc comment in `FloatAxioms.lean` for the full rationale.
+Any MCP-compatible LLM (Claude desktop, Claude Code) can query Veritas:
 
-**When Lean or Mathlib ships a `Float` proof library, every axiom in this file should be replaced with a library lemma and deleted.**
+```json
+{
+  "mcpServers": {
+    "veritas": {
+      "command": "python",
+      "args": ["-m", "python.mcp"],
+      "cwd": "/path/to/Veritas",
+      "env": { "VERITAS_DB_PATH": "/path/to/Veritas/data/veritas.db" }
+    }
+  }
+}
+```
 
-## Status
+Available tools: `get_state`, `list_assumptions`, `get_assumption`, `get_recent_trades`, `verify_theorem`, `would_take_signal`.
 
-**v0.1** — Scaffold complete, implementation in progress.
+The killer tool is `would_take_signal` — ask Veritas "if I wanted to short BTC, what would you say?" and get back a verified, formally-grounded opinion with sizing and reliability data.
+
+## Limitations (honest)
+
+**The fake market is too optimistic.** The built-in `FakeObserver` cycles through a fixed 6-step pattern where funding always reverts. This produces 100% win rate and never exercises `assumption_broke` or `stop_loss` paths. The mechanism works, but the demo data doesn't stress-test it. Real markets will produce 60-80% reliability at best.
+
+**Hyperliquid testnet not yet connected end-to-end.** `observer.py` and `executor.py` have real API implementations (tested individually against testnet), but the full loop has not run against live testnet data yet. The integration is blocked on testnet wallet setup, not code.
+
+**Sample size is tiny.** The assumption library has one assumption with at most 24 data points from the fake market. Bayesian reliability estimation is meaningless at n=24. Real statistical significance requires hundreds of trades.
+
+**Float axioms are a pragmatic gap.** 7 of 20 axioms assume IEEE 754 rounding doesn't reverse inequalities. This is true for Veritas's numerical ranges but not provable in Lean today. When Lean/Mathlib ships a `Float` proof library, these should be replaced.
+
+**Single strategy, single asset.** v0.1 only trades BTC-USDC funding rate reversion on Hyperliquid. Gate 1 and Gate 3 are architecturally defined but require a second strategy to activate.
+
+**No LLM integration yet.** `extractor.py` is a stub. v0.1 hardcodes assumption extraction in Lean. Dynamic LLM-driven extraction is v0.2 scope — the LLM will be an untrusted oracle, with Lean validating its outputs.
+
+## Project structure
+
+```
+Veritas/                    # Lean 4 source (750 lines)
+  Types.lean, Finance/, Strategy/, Learning/, Main.lean
+
+python/                     # Python I/O shell (~800 lines)
+  main.py, observer.py, executor.py, journal.py, bridge.py
+
+python/api/                 # REST API + dashboard (~600 lines)
+  server.py, routes/, static/index.html, events.py, live_runner.py
+
+python/mcp/                 # MCP server (~260 lines)
+  server.py, __main__.py
+
+tests/                      # 55 tests, all passing
+  test_loop.py, test_api_*.py, test_sse.py, test_mcp_server.py
+  demo_output/              # committed test artifacts (journal.db, summary.md)
+```
+
+## License
+
+MIT
