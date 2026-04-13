@@ -1,0 +1,10 @@
+# 测试代码不计入语言统计
+tests/** linguist-vendored
+
+# 生成的文件不计入
+.lake/** linguist-generated
+docs/** linguist-generated
+*.html linguist-generated
+
+# demo 输出不计入
+tests/demo_output/** linguist-generated
