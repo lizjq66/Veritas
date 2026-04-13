@@ -58,6 +58,16 @@ def init_db(db_path: Path = DB_PATH) -> None:
         "  exit_reason     TEXT CHECK (exit_reason IN"
         "                      ('assumption_met', 'assumption_broke', 'stop_loss')),"
         "  pnl             REAL,"
+        "  source          TEXT NOT NULL DEFAULT 'testnet'"
+        "                      CHECK (source IN ('mock', 'testnet', 'mainnet')),"
+        "  entry_context   TEXT,"
+        "  regime_tag      TEXT CHECK (regime_tag IN"
+        "                      ('bull', 'bear', 'choppy', 'unknown')),"
+        "  signal_correct  INTEGER,"
+        "  slippage_bps    REAL,"
+        "  fill_delay_ms   INTEGER,"
+        "  realized_vs_expected_pnl REAL,"
+        "  price_impact_bps REAL,"
         "  FOREIGN KEY (assumption_name) REFERENCES assumptions(name)"
         ");"
     )
@@ -119,16 +129,30 @@ def record_trade(
     exit_price: float | None = None,
     exit_reason: str | None = None,
     pnl: float | None = None,
+    *,
+    source: str = "live",
+    entry_context: str | None = None,
+    regime_tag: str | None = None,
+    signal_correct: bool | None = None,
+    slippage_bps: float | None = None,
+    fill_delay_ms: int | None = None,
+    realized_vs_expected_pnl: float | None = None,
+    price_impact_bps: float | None = None,
 ) -> int:
     """Insert a trade row. Returns the new trade id."""
     conn = _get_conn()
     cur = conn.execute(
         "INSERT INTO trades "
         "(entry_time, exit_time, direction, entry_price, exit_price, "
-        " size, assumption_name, exit_reason, pnl) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " size, assumption_name, exit_reason, pnl, "
+        " source, entry_context, regime_tag, signal_correct, "
+        " slippage_bps, fill_delay_ms, realized_vs_expected_pnl, price_impact_bps) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (entry_time, exit_time, direction, entry_price, exit_price,
-         size, assumption_name, exit_reason, pnl),
+         size, assumption_name, exit_reason, pnl,
+         source, entry_context, regime_tag,
+         int(signal_correct) if signal_correct is not None else None,
+         slippage_bps, fill_delay_ms, realized_vs_expected_pnl, price_impact_bps),
     )
     conn.commit()
     return cur.lastrowid

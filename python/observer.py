@@ -50,11 +50,22 @@ class HyperliquidObserver:
         idx = self._resolve_index(meta)
         ctx = ctxs[idx]
 
+        mark = float(ctx["markPx"])
+        prev = float(ctx.get("prevDayPx", mark))
+        bid_impact = float(ctx.get("impactPxs", [mark, mark])[0])
+        ask_impact = float(ctx.get("impactPxs", [mark, mark])[1])
+        mid = (bid_impact + ask_impact) / 2 if (bid_impact + ask_impact) > 0 else mark
+        spread_bps = (ask_impact - bid_impact) / mid * 10000 if mid > 0 else 0
+
         return {
             "funding_rate": float(ctx["funding"]),
-            "btc_price": float(ctx["markPx"]),
+            "btc_price": mark,
             "timestamp": int(time.time()),
             "open_interest": float(ctx["openInterest"]),
+            "volume_24h": float(ctx.get("dayNtlVlm", 0)),
+            "premium": float(ctx.get("premium", 0)),
+            "prev_day_price": prev,
+            "spread_bps": round(spread_bps, 2),
         }
 
     def equity(self) -> float:
@@ -112,23 +123,19 @@ class FakeObserver:
     def _default_scenarios() -> list[dict]:
         """A simple funding spike → reversion cycle."""
         base_ts = 1700000000  # fixed epoch for deterministic replay
+        defaults = {"volume_24h": 5_000_000.0, "premium": 0.001,
+                     "prev_day_price": 68000.0, "spread_bps": 15.0}
         return [
-            # Extreme negative funding → should trigger SHORT signal
             {"funding_rate": -0.0008, "btc_price": 68000.0,
-             "timestamp": base_ts, "open_interest": 500_000_000.0},
-            # Funding starts reverting
+             "timestamp": base_ts, "open_interest": 500_000_000.0, **defaults},
             {"funding_rate": -0.0004, "btc_price": 67800.0,
-             "timestamp": base_ts + 3600, "open_interest": 490_000_000.0},
-            # Funding near zero → assumption met
+             "timestamp": base_ts + 3600, "open_interest": 490_000_000.0, **defaults},
             {"funding_rate": -0.00005, "btc_price": 67900.0,
-             "timestamp": base_ts + 7200, "open_interest": 495_000_000.0},
-            # Calm market → no signal
+             "timestamp": base_ts + 7200, "open_interest": 495_000_000.0, **defaults},
             {"funding_rate": 0.0001, "btc_price": 68100.0,
-             "timestamp": base_ts + 10800, "open_interest": 500_000_000.0},
-            # Extreme positive funding → should trigger LONG signal
+             "timestamp": base_ts + 10800, "open_interest": 500_000_000.0, **defaults},
             {"funding_rate": 0.0012, "btc_price": 69000.0,
-             "timestamp": base_ts + 14400, "open_interest": 520_000_000.0},
-            # Funding drops → assumption met
+             "timestamp": base_ts + 14400, "open_interest": 520_000_000.0, **defaults},
             {"funding_rate": 0.00008, "btc_price": 69200.0,
-             "timestamp": base_ts + 18000, "open_interest": 510_000_000.0},
+             "timestamp": base_ts + 18000, "open_interest": 510_000_000.0, **defaults},
         ]

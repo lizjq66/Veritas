@@ -21,6 +21,15 @@ inductive ExitReason where
   | StopLoss
   deriving Repr, BEq, Inhabited, DecidableEq
 
+/-- Market regime — first-pass classifier (v0.1: hand-coded from 24h price change).
+    See python/regime.py for the classifier implementation. -/
+inductive Regime where
+  | Bull
+  | Bear
+  | Choppy
+  | Unknown
+  deriving Repr, BEq, Inhabited, DecidableEq
+
 /-- A snapshot of market state at a point in time. -/
 structure MarketSnapshot where
   fundingRate : Float
