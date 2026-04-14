@@ -84,3 +84,29 @@ class VeritasCore:
             str(stats["total"]),
             exit_reason,
         ])
+
+    def build_context(self, snapshot: dict) -> dict:
+        """Build rich trial context (regime, price_change, etc.) in Lean."""
+        return self._call("build-context", [
+            str(snapshot.get("funding_rate", 0)),
+            str(snapshot.get("btc_price", 0)),
+            str(snapshot.get("open_interest", 0)),
+            str(snapshot.get("volume_24h", 0)),
+            str(snapshot.get("premium", 0)),
+            str(snapshot.get("spread_bps", 0)),
+            str(snapshot.get("prev_day_price", snapshot.get("btc_price", 0))),
+        ])
+
+    def judge_signal(self, exit_reason: str) -> bool:
+        """Ask Lean: was the signal direction correct?"""
+        result = self._call("judge-signal", [exit_reason])
+        return result["signal_correct"] == "true"
+
+    def execution_quality(self, mark_price: float, fill_price: float,
+                          exit_price: float, expected_pnl: float,
+                          realized_pnl: float) -> dict:
+        """Compute execution quality metrics in Lean."""
+        return self._call("execution-quality", [
+            str(mark_price), str(fill_price), str(exit_price),
+            str(expected_pnl), str(realized_pnl),
+        ])

@@ -130,7 +130,7 @@ def record_trade(
     exit_reason: str | None = None,
     pnl: float | None = None,
     *,
-    source: str = "live",
+    source: str = "testnet",
     entry_context: str | None = None,
     regime_tag: str | None = None,
     signal_correct: bool | None = None,

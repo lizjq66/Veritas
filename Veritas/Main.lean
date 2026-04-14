@@ -20,7 +20,9 @@ import Veritas.Types
 import Veritas.Finance.PositionSizing
 import Veritas.Strategy.FundingReversion
 import Veritas.Strategy.ExitLogic
+import Veritas.Strategy.Regime
 import Veritas.Learning.Reliability
+import Veritas.Finance.ExecutionQuality
 
 open Veritas
 
@@ -136,6 +138,68 @@ private def handleUpdateReliability (args : List String) : IO UInt32 := do
     IO.eprintln "usage: veritas-core update-reliability <wins> <total> <exit_reason>"
     return 1
 
+private def handleClassifyRegime (args : List String) : IO UInt32 := do
+  match args with
+  | [priceChangeS] =>
+    let pc := strToFloat! priceChangeS
+    let regime := Strategy.classifyRegime pc
+    IO.println (jsonObj [jsonStr "regime" regime.toString])
+    return 0
+  | _ =>
+    IO.eprintln "usage: veritas-core classify-regime <price_change_24h>"
+    return 1
+
+private def handleBuildContext (args : List String) : IO UInt32 := do
+  match args with
+  | [frS, priceS, oiS, volS, premS, spreadS, prevS] =>
+    let price := strToFloat! priceS
+    let prev := strToFloat! prevS
+    let pc := Strategy.priceChange24h price prev
+    let regime := Strategy.classifyRegime pc
+    IO.println (jsonObj [
+      jsonNum "funding_rate" (strToFloat! frS),
+      jsonNum "asset_price" price,
+      jsonNum "open_interest" (strToFloat! oiS),
+      jsonNum "volume_24h" (strToFloat! volS),
+      jsonNum "premium" (strToFloat! premS),
+      jsonNum "price_change_24h" pc,
+      jsonNum "spread_bps" (strToFloat! spreadS),
+      jsonStr "regime_tag" regime.toString])
+    return 0
+  | _ =>
+    IO.eprintln "usage: veritas-core build-context <fr> <price> <oi> <vol> <prem> <spread> <prev_price>"
+    return 1
+
+private def handleJudgeSignal (args : List String) : IO UInt32 := do
+  match args with
+  | [reasonS] =>
+    match ExitReason.fromString? reasonS with
+    | none => IO.eprintln s!"unknown exit reason: {reasonS}"; return 1
+    | some reason =>
+      let correct := Finance.signalCorrect reason
+      IO.println (jsonObj [jsonStr "signal_correct" (if correct then "true" else "false")])
+      return 0
+  | _ =>
+    IO.eprintln "usage: veritas-core judge-signal <exit_reason>"
+    return 1
+
+private def handleExecutionQuality (args : List String) : IO UInt32 := do
+  match args with
+  | [markS, fillS, exitS, expectedS, realizedS] =>
+    let mark := strToFloat! markS
+    let fill := strToFloat! fillS
+    let exit := strToFloat! exitS
+    let expected := strToFloat! expectedS
+    let realized := strToFloat! realizedS
+    IO.println (jsonObj [
+      jsonNum "slippage_bps" (Finance.slippageBps mark fill),
+      jsonNum "price_impact_bps" (Finance.priceImpactBps mark exit),
+      jsonNum "realized_vs_expected_pnl" (Finance.realizedVsExpectedPnl realized expected)])
+    return 0
+  | _ =>
+    IO.eprintln "usage: veritas-core execution-quality <mark> <fill> <exit> <expected_pnl> <realized_pnl>"
+    return 1
+
 -- ── Entry point ───────────────────────────────────────────────────
 
 def main (args : List String) : IO UInt32 := do
@@ -146,8 +210,12 @@ def main (args : List String) : IO UInt32 := do
     | "extract"            => handleExtract rest
     | "size"               => handleSize rest
     | "monitor"            => handleMonitor rest
-    | "update-reliability" => handleUpdateReliability rest
-    | "version"            => IO.println "veritas-core 0.1.0"; return 0
+    | "update-reliability"  => handleUpdateReliability rest
+    | "classify-regime"     => handleClassifyRegime rest
+    | "build-context"       => handleBuildContext rest
+    | "judge-signal"        => handleJudgeSignal rest
+    | "execution-quality"   => handleExecutionQuality rest
+    | "version"             => IO.println "veritas-core 0.1.0"; return 0
     | _ =>
       IO.eprintln s!"unknown command: {cmd}"
       IO.eprintln "commands: decide, extract, size, monitor, update-reliability, version"

@@ -25,7 +25,6 @@ from python.bridge import VeritasCore
 from python.observer import FakeObserver
 from python.executor import FakeExecutor
 from python import journal
-from python.regime import build_entry_context
 
 
 def run_loop(
@@ -114,24 +113,15 @@ def run_loop(
                     _emit("learn", assumption=position["assumption_name"],
                           old_stats=stats, new_stats=new_stats)
 
-                # Compute execution quality (Improvement 1.2)
+                # Compute execution quality via Lean core (Improvement 1.2)
                 import json as _json
                 mark_at_entry = position.get("mark_price_at_entry", position["entry_price"])
                 fill_at_entry = position.get("fill_price", position["entry_price"])
-                entry_slippage = abs(fill_at_entry - mark_at_entry) / mark_at_entry * 10000
                 fill_delay = int(time.time() * 1000) - position.get("entry_ts_ms", 0)
 
-                # signal_correct: did market move in the direction we predicted?
-                if reason == "assumption_met":
-                    sig_correct = True
-                elif reason == "assumption_broke":
-                    sig_correct = False
-                else:  # stop_loss — signal direction was wrong
-                    sig_correct = False
-
-                expected_pnl = pnl  # in fake mode these are equal
-                r_vs_e = 1.0 if expected_pnl == 0 else pnl / expected_pnl if expected_pnl != 0 else 0
-                price_impact = abs(snapshot["btc_price"] - mark_at_entry) / mark_at_entry * 10000
+                sig_correct = core.judge_signal(reason)
+                eq = core.execution_quality(
+                    mark_at_entry, fill_at_entry, snapshot["btc_price"], pnl, pnl)
 
                 ctx = position.get("entry_context", {})
 
@@ -150,10 +140,10 @@ def run_loop(
                     entry_context=_json.dumps(ctx) if ctx else None,
                     regime_tag=ctx.get("regime_tag", "unknown"),
                     signal_correct=sig_correct,
-                    slippage_bps=round(entry_slippage, 2),
+                    slippage_bps=eq.get("slippage_bps", 0),
                     fill_delay_ms=fill_delay if fill_delay > 0 else 0,
-                    realized_vs_expected_pnl=round(r_vs_e, 4),
-                    price_impact_bps=round(price_impact, 2),
+                    realized_vs_expected_pnl=eq.get("realized_vs_expected_pnl", 1.0),
+                    price_impact_bps=eq.get("price_impact_bps", 0),
                 )
                 position = None
                 trades_completed += 1
@@ -214,7 +204,7 @@ def run_loop(
                             entry_timestamp=snapshot["timestamp"],
                         )
                         if result["ok"]:
-                            ctx = build_entry_context(snapshot)
+                            ctx = core.build_context(snapshot)
                             position = {
                                 "direction": signal["direction"],
                                 "entry_price": result["price"],
