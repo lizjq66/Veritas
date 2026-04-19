@@ -41,9 +41,3 @@ private_key = ""            # Testnet wallet private key (0x...)
 network     = "testnet"     # "testnet" only; mainnet is not supported.
 coin        = "BTC"
 check_interval_seconds = 60
-
-[adapters.llm]
-# Reserved for a future LLM-driven assumption extractor. Unused in v0.1.
-provider = "anthropic"
-api_key  = ""
-model    = "claude-sonnet-4-20250514"
