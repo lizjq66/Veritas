@@ -169,6 +169,15 @@ This runner is **not the product**. It is a demonstration of what sits *above* V
 
 The `--live` flag is an **optional demonstration**, not a v0.1 ship requirement. v0.1 is complete when the verifier API contract holds against fixture proposals — see [`docs/PRODUCT_BRIEF.md`](docs/PRODUCT_BRIEF.md#v01-completion-criteria). Exercising the Hyperliquid adapters against real testnet traffic is a v0.2+ concern.
 
+## External agent integrations
+
+Veritas is infrastructure — any agent framework can call `POST /verify/proposal` before executing. See [`examples/external_integration/`](examples/external_integration/) for two minimal working examples:
+
+- **`anthropic_sdk_loop.py`** — Anthropic SDK tool-use: LLM proposes, Veritas verifies, caller decides.
+- **`langgraph_integration.py`** — a four-node LangGraph agent that calls Veritas as a `@tool`, routing approvals to an execute node and rejections to a rejection handler.
+
+Both are pure consumers of the HTTP contract and carry their own `requirements-examples.txt`.
+
 ## Project structure
 
 ```

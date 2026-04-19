@@ -1,0 +1,8 @@
+# Dependencies for the external-integration examples only.
+# Not required by Veritas itself.
+#
+#   pip install -r examples/external_integration/requirements-examples.txt
+
+anthropic
+langgraph
+langchain-core
