@@ -137,53 +137,129 @@ def _write_events_jsonl(lines: list[str], path: Path) -> None:
     path.write_text("\n".join(json.dumps(e) for e in events) + "\n")
 
 
+def _verdict_str(v) -> str:
+    """Render a Verdict as a short human string for the summary."""
+    if v.tag == "approve":
+        return "approve"
+    if v.tag == "resize":
+        return f"resize → ${v.new_notional_usd:,.0f}"
+    return f"reject ({', '.join(v.reason_codes)})"
+
+
+def _fixture_verification_trace() -> list[dict]:
+    """Run a handful of canonical proposals through the verifier so the
+    summary includes real Gate 1/2/3 verdicts, not just outcomes derived
+    from the example runner's journal.
+
+    Inputs are fixed so the trace is byte-reproducible.
+    """
+    from python.schemas import (
+        AccountConstraints,
+        Portfolio,
+        PortfolioPosition,
+        TradeProposal,
+    )
+    from python.verifier import Verifier
+
+    v = Verifier()
+    cases = [
+        ("aligned LONG on positive funding (clean approve)",
+         TradeProposal(direction="LONG", notional_usd=1500.0,
+                       funding_rate=0.0012, price=68000.0, timestamp=0),
+         AccountConstraints(equity=10000.0, reliability=0.8, sample_size=20),
+         None),
+        ("wrong-direction LONG on negative funding (Gate 1 reject)",
+         TradeProposal(direction="LONG", notional_usd=1500.0,
+                       funding_rate=-0.0008, price=68000.0, timestamp=0),
+         AccountConstraints(equity=10000.0, reliability=0.8, sample_size=20),
+         None),
+        ("oversize proposal (Gate 2 resize to ceiling)",
+         TradeProposal(direction="LONG", notional_usd=9000.0,
+                       funding_rate=0.0012, price=68000.0, timestamp=0),
+         AccountConstraints(equity=10000.0, reliability=0.9, sample_size=30),
+         None),
+        ("no-edge proposal (Gate 2 reject)",
+         TradeProposal(direction="LONG", notional_usd=1000.0,
+                       funding_rate=0.0012, price=68000.0, timestamp=0),
+         AccountConstraints(equity=10000.0, reliability=0.5, sample_size=30),
+         None),
+        ("portfolio direction conflict (Gate 3 reject)",
+         TradeProposal(direction="LONG", notional_usd=1000.0,
+                       funding_rate=0.0012, price=68000.0, timestamp=0),
+         AccountConstraints(equity=10000.0, reliability=0.8, sample_size=20),
+         Portfolio(
+             positions=(PortfolioPosition(
+                 direction="SHORT", entry_price=67500.0, size=0.03),),
+             max_gross_exposure_fraction=0.50,
+         )),
+    ]
+    out = []
+    for label, proposal, constraints, portfolio in cases:
+        cert = v.verify(proposal, constraints, portfolio)
+        out.append({
+            "label": label,
+            "direction": proposal.direction,
+            "requested_notional": proposal.notional_usd,
+            "gate1": _verdict_str(cert.gate1),
+            "gate2": _verdict_str(cert.gate2),
+            "gate3": _verdict_str(cert.gate3),
+            "approves": cert.approves,
+            "final_notional": cert.final_notional_usd,
+        })
+    return out
+
+
 def _write_summary_md(db_path: Path, summary: dict, lines: list[str],
                       md_path: Path) -> None:
-    """Generate summary.md from journal DB and run results."""
+    """Generate summary.md as a verification session report.
+
+    Each row in the example runner's journal represents a proposal that
+    passed all three gates, was executed by the in-process FakeExecutor,
+    and later classified by `classify-exit`. The summary reports what
+    those verdicts and outcomes were, plus a fixture batch showing Gate
+    1/2/3 verdicts directly.
+    """
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
 
-    # Query trades
-    trades = [dict(r) for r in conn.execute(
+    proposals = [dict(r) for r in conn.execute(
         "SELECT * FROM trades ORDER BY id").fetchall()]
     assumptions = [dict(r) for r in conn.execute(
         "SELECT * FROM assumptions").fetchall()]
     conn.close()
 
-    n_trades = len(trades)
-    n_explore = min(n_trades, 10)
-    n_exploit = max(0, n_trades - 10)
+    n_approved = len(proposals)
+    n_explore = min(n_approved, 10)
+    n_exploit = max(0, n_approved - 10)
 
-    # Exit reason breakdown
-    reasons: dict[str, int] = {}
-    for t in trades:
-        r = t.get("exit_reason", "unknown")
-        reasons[r] = reasons.get(r, 0) + 1
+    # Assumption-outcome breakdown (downstream of the approval)
+    outcomes: dict[str, int] = {}
+    for p in proposals:
+        r = p.get("exit_reason", "unknown")
+        outcomes[r] = outcomes.get(r, 0) + 1
 
-    # Reliability evolution (wins/total after each trade)
+    # Reliability evolution across the session
     rel_history = []
     wins, total = 0, 0
-    for t in trades:
+    for p in proposals:
         total += 1
-        if t.get("exit_reason") == "assumption_met":
+        if p.get("exit_reason") == "assumption_met":
             wins += 1
         rel_history.append(wins / total if total > 0 else 0.5)
 
     # ASCII chart of reliability
     chart_lines = []
-    width = min(n_trades, 48)
-    step = max(1, n_trades // width)
-    sampled = [rel_history[i] for i in range(0, n_trades, step)]
+    width = min(n_approved, 48)
+    step = max(1, n_approved // width) if n_approved else 1
+    sampled = [rel_history[i] for i in range(0, n_approved, step)] if n_approved else []
     for row_val in [1.0, 0.75, 0.5, 0.25, 0.0]:
-        bar = ""
-        for v in sampled:
-            bar += "#" if v >= row_val - 0.01 else " "
+        bar = "".join("#" if v >= row_val - 0.01 else " " for v in sampled)
         chart_lines.append(f"  {row_val:.2f} |{bar}|")
     chart_lines.append(f"       +{'-' * len(sampled)}+")
-    label = f"        trade 1{' ' * (len(sampled) - 4)}trade {n_trades}"
+    label = f"        proposal 1{' ' * max(0, len(sampled) - 4)}proposal {n_approved}"
     chart_lines.append(label)
 
-    # DB hash — hash trade data only (deterministic), not timestamps.
+    # Deterministic DB hash — journal rows only, not timestamps.
     conn2 = sqlite3.connect(str(db_path))
     trade_rows = conn2.execute(
         "SELECT direction, entry_price, exit_price, size, "
@@ -196,42 +272,72 @@ def _write_summary_md(db_path: Path, summary: dict, lines: list[str],
     hash_input = repr((trade_rows, assumption_rows))
     db_hash = hashlib.md5(hash_input.encode()).hexdigest()
 
-    # Build markdown
-    md = f"""# Veritas v0.1 — Simulated Trading Session
+    # Fixture verification trace — direct Gate 1/2/3 verdicts
+    fixtures = _fixture_verification_trace()
+
+    md = f"""# Veritas v0.1 — Verification Session Report
 
 > Auto-generated by `pytest tests/test_loop.py`.
-> Last run: deterministic (fixed seed, no real clock).
+> Veritas is a pre-trade verifier. This report describes the verdicts it
+> returned for a deterministic batch of proposals.
 
-## Summary
+## Session overview
 
 | Metric | Value |
 |--------|-------|
-| Total trades | {n_trades} |
-| Exploration phase (trades 1-10) | {n_explore} trades at 1% of equity |
-| Exploitation phase (trades 11+) | {n_exploit} trades at Kelly sizing |
-| Simulated time | ~{n_trades * 6}h ({n_trades * 6 // 24} days) |
-| Starting equity | $10,000 |
+| Proposals that cleared all three gates | {n_approved} |
+| Of those, exploration-phase sizing (first 10) | {n_explore} at 1% of equity |
+| Of those, exploitation-phase sizing (11+) | {n_exploit} at reliability-adjusted ceiling |
+| Assumption backing every approved proposal | `funding_rate_reverts_within_8h` |
+| Starting equity (caller's account) | $10,000 |
 
-## Assumption Library
+Each row in the table below represents one proposal. Every row passed
+Gate 1 (signal consistency), Gate 2 (strategy-constraint compatibility),
+and Gate 3 (portfolio interference). The final notional shown is what
+Gate 2 approved.
 
-| Assumption | Wins | Total | Reliability |
-|------------|------|-------|-------------|
+## Gate verdict walkthrough — fixture proposals
+
+These five fixture proposals are submitted directly to the verifier so
+the report includes explicit Gate 1 / Gate 2 / Gate 3 verdicts rather
+than just runner outcomes.
+
+| Scenario | Gate 1 | Gate 2 | Gate 3 | Approves | Final notional |
+|---|---|---|---|---|---|
+"""
+    for f in fixtures:
+        md += (f"| {f['label']} | `{f['gate1']}` | `{f['gate2']}` | "
+               f"`{f['gate3']}` | {'yes' if f['approves'] else 'no'} | "
+               f"${f['final_notional']:,.0f} |\n")
+
+    md += """
+## Assumption library (caller state)
+
+| Assumption | Wins | Total | Empirical reliability |
+|------------|------|-------|-----------------------|
 """
     for a in assumptions:
         rel = a["wins"] / a["total"] if a["total"] > 0 else 0.5
         md += f"| `{a['name']}` | {a['wins']} | {a['total']} | {rel:.0%} |\n"
 
     md += """
-## Exit Reason Breakdown
+## Post-approval outcomes (assumption classification)
 
-| Reason | Count |
-|--------|-------|
+Once a proposal has cleared all three gates and the caller has executed
+the approved notional, `classify-exit` groups the eventual close into
+one of three mutually exclusive reasons (proved exhaustive by
+`exitReason_exhaustive`). Counts across this session:
+
+| Classification | Count |
+|----------------|-------|
 """
-    for reason, count in sorted(reasons.items()):
+    for reason, count in sorted(outcomes.items()):
         md += f"| `{reason}` | {count} |\n"
 
     md += f"""
-## Reliability Evolution
+## Reliability evolution across the session
+
+Wins over totals after each approved proposal closed out.
 
 ```
 {chr(10).join(chart_lines)}
@@ -241,15 +347,16 @@ def _write_summary_md(db_path: Path, summary: dict, lines: list[str],
 
 | Check | Value |
 |-------|-------|
-| journal.db MD5 | `{db_hash}` |
-| Byte-identical across runs | Yes (verified by test) |
+| journal.db MD5 (session rows only) | `{db_hash}` |
+| Byte-identical across runs | yes (verified by `test_full_loop_deterministic`) |
 
 ---
 
-*This is fake market data. The funding rates were synthesized for testing.
-What's real is the mechanism — the Lean core, the assumption library updates,
-the exploration-to-exploitation transition, and the deterministic reproducibility.
-Connecting to a real market requires only replacing the observer and executor.*
+*Market data in this session is synthesized by the test fixtures. What
+is real is the verifier: the Lean kernel behind Gate 1/2/3, the
+reliability update rule, and the deterministic reproducibility of the
+verdicts. Swapping the example observer / executor for any venue
+adapter does not change the verifier's behavior.*
 """
     md_path.write_text(md)
 
