@@ -7,6 +7,13 @@ Adapters translate between a specific venue (Hyperliquid, in this case)
 and the shape Veritas expects. Swap it for a different venue by writing
 a new class with the same surface.
 
+v0.1 ship note: HyperliquidObserver is provided as a reference
+integration only. It is NOT on the v0.1 critical path. The v0.1
+ship gate is verifier correctness against fixture proposals — see
+docs/PRODUCT_BRIEF.md, "v0.1 completion criteria". Exercising this
+adapter against live Hyperliquid testnet traffic is a v0.2+ concern.
+The in-process FakeObserver is sufficient for all v0.1 tests.
+
 Pure I/O: fetches data, returns it as a dict. No decisions.
 """
 

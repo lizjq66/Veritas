@@ -162,10 +162,12 @@ For readers who want to see a concrete caller, the repo ships a funding-reversio
 
 ```bash
 python -m python.main          # fake market, fake executor (default)
-python -m python.main --live   # Hyperliquid testnet, requires config.toml
+python -m python.main --live   # Hyperliquid testnet — example adapter only
 ```
 
 This runner is **not the product**. It is a demonstration of what sits *above* Veritas. The runner contains zero decision logic; every approve/resize/reject flows through the three gates.
+
+The `--live` flag is an **optional demonstration**, not a v0.1 ship requirement. v0.1 is complete when the verifier API contract holds against fixture proposals — see [`docs/PRODUCT_BRIEF.md`](docs/PRODUCT_BRIEF.md#v01-completion-criteria). Exercising the Hyperliquid adapters against real testnet traffic is a v0.2+ concern.
 
 ## Project structure
 

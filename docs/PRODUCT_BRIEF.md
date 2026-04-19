@@ -244,7 +244,54 @@ verifier itself never speaks to Hyperliquid.
 - Removing rounding-dependent Float axioms (v0.2 target).
 - ZK certificate issuance (v0.3+).
 - Public registry of assumptions / theorems (v0.3–v0.4).
+- **Live exchange execution as a v0.1 ship requirement.** Veritas
+  v0.1 is a verifier, not a trader. Whether the bundled example
+  adapters (`HyperliquidObserver`, `HyperliquidExecutor`) have been
+  exercised against Hyperliquid testnet is a v0.2+ concern. Their
+  correctness does not gate v0.1 completion; the verifier API
+  contract does.
 - Mainnet capital.
+
+### v0.1 completion criteria
+
+Veritas v0.1 ships when — and only when — the following are true:
+
+1. **Verifier API contract holds against fixture proposals.** The
+   `Verifier` Python surface, the `POST /verify/*` HTTP surface, the
+   MCP `verify_proposal` tool, and the `veritas-core` CLI all
+   produce the same certificate for the same input. Enforced by
+   `tests/test_gates.py`, `tests/test_api_endpoints.py`, and
+   `tests/test_mcp_server.py`.
+2. **All three gates cover their approve / resize / reject paths.**
+   Gate 1 must accept coherent proposals, reject wrong-direction and
+   silent-policy proposals; Gate 2 must approve within the ceiling,
+   resize above it, reject at no edge; Gate 3 must approve empty
+   portfolios, reject direction conflicts, resize on cap breach.
+   Enforced by `tests/test_gates.py`.
+3. **Python cannot bypass the Lean kernel.** No Python file branches
+   on Veritas decision types, mints `Verdict` values outside the
+   schema layer, or invokes `veritas-core` outside the bridge.
+   Enforced by `tests/test_bypass_invariant.py`.
+4. **Lean kernel is sorry-free, with disclosed axioms.** `lake build`
+   produces the binary with zero `sorry`. The 20 Float axioms in
+   `Finance/FloatAxioms.lean` are classified into exact vs.
+   rounding-dependent at the top of that file.
+5. **Full test suite is green.** `python -m pytest tests/` passes in
+   full. Runner-level tests (`test_loop.py`, `test_live_runner.py`)
+   exercise the bundled example adapters only against the in-process
+   fakes.
+
+Criteria Veritas v0.1 **does not include**:
+
+- Any number of real trades placed on Hyperliquid testnet or any
+  other venue.
+- Any SLA on the example adapters under real network conditions.
+- Any consecutive-days uptime requirement.
+
+Callers who care about live execution against a specific venue
+should treat adapter correctness as their own responsibility. The
+verifier's job is to return the same certificate for the same input,
+and to keep that contract stable across kernel versions.
 
 ---
 

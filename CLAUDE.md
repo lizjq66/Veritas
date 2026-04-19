@@ -105,3 +105,14 @@ Exchange integrations, runners, dashboards, and journals are
 The bundled example runner tags its trades `mock`, `testnet`, or
 `mainnet`. Never mix sources in reliability calculations without
 explicit filtering.
+
+## v0.1 ship criterion
+
+v0.1 ships when the verifier API contract holds against fixture
+proposals — not when an adapter has executed real trades. Concretely:
+`tests/test_gates.py`, `tests/test_api_endpoints.py`,
+`tests/test_mcp_server.py`, and `tests/test_bypass_invariant.py` all
+pass; `lake build` produces a sorry-free binary. Whether
+`HyperliquidObserver` / `HyperliquidExecutor` have been exercised
+against real testnet traffic is explicitly a v0.2+ concern and does
+not gate the v0.1 release.
