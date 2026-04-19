@@ -1,6 +1,12 @@
 from __future__ import annotations
 
-"""Hyperliquid order placement — execute trades.
+"""Executor adapter — Hyperliquid order placement (example).
+
+This is an example adapter, not part of the Veritas verifier product.
+Executors are downstream of Veritas — they receive a notional that has
+already cleared all three gates and translate it into a venue-specific
+order. Swap it for a different venue by writing a new class with the
+same surface.
 
 Pure I/O: places orders, returns results. No decisions.
 """

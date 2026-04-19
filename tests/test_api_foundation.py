@@ -20,7 +20,7 @@ def test_health_returns_ok():
 def test_post_rejected():
     resp = client.post("/health")
     assert resp.status_code == 405
-    assert resp.json()["error"] == "veritas_api_is_read_only"
+    assert resp.json()["error"] == "veritas_api_write_denied"
 
 
 def test_delete_rejected():

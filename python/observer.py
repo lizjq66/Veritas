@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-"""Hyperliquid API client — observe market state.
+"""Observer adapter — Hyperliquid market data (example).
+
+This is an example adapter, not part of the Veritas verifier product.
+Adapters translate between a specific venue (Hyperliquid, in this case)
+and the shape Veritas expects. Swap it for a different venue by writing
+a new class with the same surface.
 
 Pure I/O: fetches data, returns it as a dict. No decisions.
 """

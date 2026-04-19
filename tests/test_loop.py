@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import shutil
 import sqlite3
 import tempfile
 from pathlib import Path
@@ -222,7 +221,7 @@ def _write_summary_md(db_path: Path, summary: dict, lines: list[str],
         rel = a["wins"] / a["total"] if a["total"] > 0 else 0.5
         md += f"| `{a['name']}` | {a['wins']} | {a['total']} | {rel:.0%} |\n"
 
-    md += f"""
+    md += """
 ## Exit Reason Breakdown
 
 | Reason | Count |

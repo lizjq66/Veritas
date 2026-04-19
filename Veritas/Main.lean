@@ -1,19 +1,32 @@
 /-
-  Veritas.Main — CLI entry point for the Lean verified core.
+  Veritas.Main — CLI entry point for the Lean verification kernel.
 
-  Invoked by Python bridge as:
-    veritas-core <command> <args...>
+  Veritas is a pre-trade verifier. A calling trading agent submits a
+  proposed trade via one of the gate commands, and Veritas returns a
+  structured approve / resize / reject verdict with reason codes.
 
-  Commands:
-    decide <funding_rate> <btc_price> <timestamp> [open_interest]
-    extract <direction> <funding_rate> <price>
-    size <equity> <reliability>
-    monitor <funding_rate> <btc_price> <timestamp> <open_interest>
-            <direction> <entry_price> <size> <leverage> <stop_loss_pct>
-            <entry_timestamp> <assumption_name>
+  Gate commands (the product surface):
+    verify-signal      <dir> <fr> <price> <ts> <oi> <notional>
+    check-constraints  <dir> <notional> <equity> <reliability>
+                       <sample_size> <max_leverage> <max_pos_frac> <stop_pct>
+    check-portfolio    <dir> <notional> <equity> <max_gross_frac>
+                       <existing_positions_json>
+    classify-exit      (see `monitor` below — same implementation)
+    emit-certificate   <proposal_json> <constraints_json> <portfolio_json>
+
+  Primitive commands (building blocks; callable by adapters and demos):
+    decide             <fr> <price> <ts> [oi]
+    extract            <dir> <fr> <price>
+    size               <equity> <reliability> <sample_size>
+    monitor            <fr> <price> <ts> <oi> <dir> <ep> <sz> <lev> <sl>
+                       <ets> <aname>
     update-reliability <wins> <total> <exit_reason>
+    classify-regime    <price_change_24h>
+    build-context      <fr> <price> <oi> <vol> <prem> <spread> <prev_price>
+    judge-signal       <exit_reason>
+    execution-quality  <mark> <fill> <exit> <expected> <realized>
 
-  Output: JSON to stdout.
+  Output: JSON to stdout. Errors to stderr with nonzero exit code.
 -/
 import Lean.Data.Json.Parser
 import Veritas.Types
@@ -23,6 +36,11 @@ import Veritas.Strategy.ExitLogic
 import Veritas.Strategy.Regime
 import Veritas.Learning.Reliability
 import Veritas.Finance.ExecutionQuality
+import Veritas.Gates.Types
+import Veritas.Gates.SignalGate
+import Veritas.Gates.ConstraintGate
+import Veritas.Gates.PortfolioGate
+import Veritas.Gates.Certificate
 
 open Veritas
 
@@ -48,7 +66,29 @@ private def jsonNat (k : String) (v : Nat) : String := s!"\"{k}\": {v}"
 private def jsonObj (fields : List String) : String :=
   "{ " ++ ", ".intercalate fields ++ " }"
 
--- ── Command handlers ──────────────────────────────────────────────
+/-- Serialize a list of string reason codes as a JSON array. -/
+private def jsonCodes (codes : List String) : String :=
+  let quoted := codes.map (fun c => s!"\"{c}\"")
+  "[" ++ ", ".intercalate quoted ++ "]"
+
+/-- Serialize a list of assumptions as a JSON array of {name, description}. -/
+private def jsonAssumptions (xs : List Assumption) : String :=
+  let items := xs.map fun a =>
+    jsonObj [jsonStr "name" a.name, jsonStr "description" a.description]
+  "[" ++ ", ".intercalate items ++ "]"
+
+/-- Serialize a verdict as a compact JSON object. -/
+private def jsonVerdict (v : Gates.Verdict) : String :=
+  match v with
+  | .Approve =>
+    jsonObj [jsonStr "verdict" "approve"]
+  | .Resize n =>
+    jsonObj [jsonStr "verdict" "resize", jsonNum "new_notional_usd" n]
+  | .Reject codes =>
+    jsonObj [jsonStr "verdict" "reject",
+             s!"\"reason_codes\": {jsonCodes codes}"]
+
+-- ── Primitive command handlers ────────────────────────────────────
 
 private def handleDecide (args : List String) : IO UInt32 := do
   let (frS, priceS, tsS, oiS) ← match args with
@@ -75,9 +115,7 @@ private def handleExtract (args : List String) : IO UInt32 := do
     | some dir =>
       let signal : Signal := ⟨dir, strToFloat! frS, strToFloat! priceS⟩
       let assumptions := Strategy.extractAssumptions signal
-      let jsons := assumptions.map fun a =>
-        jsonObj [jsonStr "name" a.name, jsonStr "description" a.description]
-      IO.println s!"[{", ".intercalate jsons}]"
+      IO.println (jsonAssumptions assumptions)
       return 0
   | _ =>
     IO.eprintln "usage: veritas-core extract <direction> <fr> <price>"
@@ -200,16 +238,174 @@ private def handleExecutionQuality (args : List String) : IO UInt32 := do
     IO.eprintln "usage: veritas-core execution-quality <mark> <fill> <exit> <expected_pnl> <realized_pnl>"
     return 1
 
+-- ── Gate command handlers ────────────────────────────────────────
+
+/-- Positional-argument form. A richer JSON entry point lives in
+    `emit-certificate`. -/
+private def handleVerifySignal (args : List String) : IO UInt32 := do
+  match args with
+  | [dirS, frS, priceS, tsS, oiS, notionalS] =>
+    match Direction.fromString? dirS with
+    | none => IO.eprintln s!"unknown direction: {dirS}"; return 1
+    | some dir =>
+      let proposal : Gates.TradeProposal :=
+        ⟨dir, strToFloat! notionalS, strToFloat! frS, strToFloat! priceS,
+         tsS.toNat!, strToFloat! oiS⟩
+      let (verdict, assumptions) := Gates.verifySignal proposal
+      IO.println (jsonObj [
+        jsonStr "gate" "1",
+        jsonStr "name" "signal_consistency",
+        s!"\"result\": {jsonVerdict verdict}",
+        s!"\"assumptions\": {jsonAssumptions assumptions}"])
+      return 0
+  | _ =>
+    IO.eprintln "usage: veritas-core verify-signal <dir> <fr> <price> <ts> <oi> <notional>"
+    return 1
+
+private def handleCheckConstraints (args : List String) : IO UInt32 := do
+  match args with
+  | [dirS, notionalS, equityS, relS, sampleS, maxLevS, maxFracS, stopPctS] =>
+    match Direction.fromString? dirS with
+    | none => IO.eprintln s!"unknown direction: {dirS}"; return 1
+    | some dir =>
+      -- Placeholders for fields not used by Gate 2 itself.
+      let proposal : Gates.TradeProposal :=
+        ⟨dir, strToFloat! notionalS, 0.0, 0.0, 0, 0.0⟩
+      let constraints : Gates.AccountConstraints :=
+        ⟨strToFloat! equityS, strToFloat! maxFracS, strToFloat! maxLevS,
+         strToFloat! stopPctS, strToFloat! relS, sampleS.toNat!⟩
+      let verdict := Gates.checkConstraints proposal constraints
+      IO.println (jsonObj [
+        jsonStr "gate" "2",
+        jsonStr "name" "strategy_constraint_compatibility",
+        s!"\"result\": {jsonVerdict verdict}"])
+      return 0
+  | _ =>
+    IO.eprintln "usage: veritas-core check-constraints <dir> <notional> <equity> <reliability> <sample_size> <max_leverage> <max_pos_frac> <stop_pct>"
+    return 1
+
+/-- v0.1 Gate 3 positional form: caller passes its own position
+    summary as seven flat fields, or "none" to indicate no position.
+
+    Call shape (no position):
+      check-portfolio <dir> <notional> <equity> <max_gross_frac> none
+
+    Call shape (one existing position on the same asset):
+      check-portfolio <dir> <notional> <equity> <max_gross_frac>
+                      one <existing_dir> <existing_entry_price> <existing_size>
+-/
+private def handleCheckPortfolio (args : List String) : IO UInt32 := do
+  match args with
+  | [dirS, notionalS, equityS, maxFracS, "none"] =>
+    match Direction.fromString? dirS with
+    | none => IO.eprintln s!"unknown direction: {dirS}"; return 1
+    | some dir =>
+      let proposal : Gates.TradeProposal :=
+        ⟨dir, strToFloat! notionalS, 0.0, 0.0, 0, 0.0⟩
+      let port : Gates.Portfolio := ⟨[], strToFloat! maxFracS⟩
+      let verdict := Gates.checkPortfolio proposal port (strToFloat! equityS)
+      IO.println (jsonObj [
+        jsonStr "gate" "3",
+        jsonStr "name" "portfolio_interference",
+        s!"\"result\": {jsonVerdict verdict}"])
+      return 0
+  | [dirS, notionalS, equityS, maxFracS, "one", exDirS, exEpS, exSzS] =>
+    match Direction.fromString? dirS, Direction.fromString? exDirS with
+    | some dir, some exDir =>
+      let proposal : Gates.TradeProposal :=
+        ⟨dir, strToFloat! notionalS, 0.0, 0.0, 0, 0.0⟩
+      let pos : Position :=
+        ⟨exDir, strToFloat! exEpS, strToFloat! exSzS, 1.0, 5.0, 0, ""⟩
+      let port : Gates.Portfolio := ⟨[pos], strToFloat! maxFracS⟩
+      let verdict := Gates.checkPortfolio proposal port (strToFloat! equityS)
+      IO.println (jsonObj [
+        jsonStr "gate" "3",
+        jsonStr "name" "portfolio_interference",
+        s!"\"result\": {jsonVerdict verdict}"])
+      return 0
+    | _, _ =>
+      IO.eprintln s!"unknown direction in check-portfolio"; return 1
+  | _ =>
+    IO.eprintln "usage: veritas-core check-portfolio <dir> <notional> <equity> <max_gross_frac> (none | one <exist_dir> <exist_ep> <exist_sz>)"
+    return 1
+
+/-- Alias for `monitor` under gate-vocabulary naming. -/
+private def handleClassifyExit (args : List String) : IO UInt32 :=
+  handleMonitor args
+
+/-- Full certificate: run all three gates in sequence and emit the trace.
+
+    This is the richest positional form; adapters that want structured
+    input can still call the individual gates one at a time.
+
+    Args: <dir> <notional> <fr> <price> <ts> <oi>
+          <equity> <reliability> <sample_size> <max_leverage>
+          <max_pos_frac> <stop_pct> <max_gross_frac>
+          (none | one <exist_dir> <exist_ep> <exist_sz>) -/
+private def handleEmitCertificate (args : List String) : IO UInt32 := do
+  let parse := fun (core : List String) (port : Gates.Portfolio)
+                   (dirStr : String) (notionalStr frStr priceStr : String)
+                   (tsStr oiStr : String)
+                   (equityStr relStr sampleStr : String)
+                   (maxLevStr maxFracStr stopPctStr : String) => do
+    match Direction.fromString? dirStr with
+    | none => IO.eprintln s!"unknown direction: {dirStr}"; return (1 : UInt32)
+    | some dir =>
+      let proposal : Gates.TradeProposal :=
+        ⟨dir, strToFloat! notionalStr, strToFloat! frStr, strToFloat! priceStr,
+         tsStr.toNat!, strToFloat! oiStr⟩
+      let constraints : Gates.AccountConstraints :=
+        ⟨strToFloat! equityStr, strToFloat! maxFracStr, strToFloat! maxLevStr,
+         strToFloat! stopPctStr, strToFloat! relStr, sampleStr.toNat!⟩
+      let cert := Gates.emitCertificate proposal constraints port
+      IO.println (jsonObj [
+        s!"\"gate1\": {jsonVerdict cert.gate1}",
+        s!"\"gate2\": {jsonVerdict cert.gate2}",
+        s!"\"gate3\": {jsonVerdict cert.gate3}",
+        s!"\"assumptions\": {jsonAssumptions cert.assumptions}",
+        jsonNum "final_notional_usd" cert.finalNotionalUsd,
+        jsonStr "approves" (if cert.approves then "true" else "false")])
+      let _ := core
+      return 0
+  match args with
+  | [d, n, fr, pr, ts, oi, eq, rel, sam, lev, pfrac, stop, gfrac, "none"] =>
+    parse [] ⟨[], strToFloat! gfrac⟩ d n fr pr ts oi eq rel sam lev pfrac stop
+  | [d, n, fr, pr, ts, oi, eq, rel, sam, lev, pfrac, stop, gfrac,
+     "one", exDirS, exEpS, exSzS] =>
+    match Direction.fromString? exDirS with
+    | none => IO.eprintln s!"unknown existing direction: {exDirS}"; return 1
+    | some exDir =>
+      let pos : Position :=
+        ⟨exDir, strToFloat! exEpS, strToFloat! exSzS, 1.0, 5.0, 0, ""⟩
+      let port : Gates.Portfolio := ⟨[pos], strToFloat! gfrac⟩
+      parse [] port d n fr pr ts oi eq rel sam lev pfrac stop
+  | _ =>
+    IO.eprintln "usage: veritas-core emit-certificate <dir> <notional> <fr> <price> <ts> <oi> <equity> <reliability> <sample> <max_lev> <max_pos_frac> <stop_pct> <max_gross_frac> (none | one <exist_dir> <exist_ep> <exist_sz>)"
+    return 1
+
 -- ── Entry point ───────────────────────────────────────────────────
+
+/-- Commands listed in the help banner. -/
+private def commandList : String :=
+  "gate commands:    verify-signal, check-constraints, check-portfolio, classify-exit, emit-certificate\n" ++
+  "primitive commands: decide, extract, size, monitor, update-reliability,\n" ++
+  "                   classify-regime, build-context, judge-signal, execution-quality, version"
 
 def main (args : List String) : IO UInt32 := do
   match args with
   | cmd :: rest =>
     match cmd with
-    | "decide"             => handleDecide rest
-    | "extract"            => handleExtract rest
-    | "size"               => handleSize rest
-    | "monitor"            => handleMonitor rest
+    -- Gate surface (new product vocabulary)
+    | "verify-signal"       => handleVerifySignal rest
+    | "check-constraints"   => handleCheckConstraints rest
+    | "check-portfolio"     => handleCheckPortfolio rest
+    | "classify-exit"       => handleClassifyExit rest
+    | "emit-certificate"    => handleEmitCertificate rest
+    -- Primitive commands (building blocks)
+    | "decide"              => handleDecide rest
+    | "extract"             => handleExtract rest
+    | "size"                => handleSize rest
+    | "monitor"             => handleMonitor rest
     | "update-reliability"  => handleUpdateReliability rest
     | "classify-regime"     => handleClassifyRegime rest
     | "build-context"       => handleBuildContext rest
@@ -218,9 +414,9 @@ def main (args : List String) : IO UInt32 := do
     | "version"             => IO.println "veritas-core 0.1.0"; return 0
     | _ =>
       IO.eprintln s!"unknown command: {cmd}"
-      IO.eprintln "commands: decide, extract, size, monitor, update-reliability, version"
+      IO.eprintln commandList
       return 1
   | [] =>
-    IO.println "veritas-core 0.1.0 — Lean-native verified trading core"
-    IO.println "commands: decide, extract, size, monitor, update-reliability, version"
+    IO.println "veritas-core 0.1.0 — Lean-backed pre-trade verifier"
+    IO.println commandList
     return 0

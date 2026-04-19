@@ -1,19 +1,49 @@
-[hyperliquid]
-private_key = ""        # Testnet wallet private key (0x...)
-network = "testnet"     # "testnet" only for v0.1
+# Veritas configuration.
+#
+# Veritas is a pre-trade verifier. Most users only need the [verifier]
+# and [policy] sections. The [adapters.*] blocks are optional and only
+# consulted by the bundled example runner (`python -m python.main`).
 
-[llm]
-provider = "anthropic"  # Reserved for v0.2 — v0.1 does not call LLM
-api_key = ""
-model = "claude-sonnet-4-20250514"
+# ── Verifier surface ─────────────────────────────────────────────
 
-[strategy]
-coin = "BTC"
+[verifier]
+# Path to the compiled Lean kernel produced by `lake build`.
+core_binary = ".lake/build/bin/veritas-core"
+# HTTP port for the verification API (`python -m python.api.run`).
+http_port = 8000
+# Where the bundled demo runner writes its journal. Harmless if unused.
+journal_db = "data/veritas.db"
+
+# ── Policy defaults used by the verifier ─────────────────────────
+#
+# These are the numbers callers get when they don't pass their own
+# values. A caller can always override per request.
+
+[policy]
+# Hard cap on any single position as a fraction of equity.
+max_position_fraction = 0.25
+# Hard cap on total gross exposure across a portfolio.
+max_gross_exposure_fraction = 0.50
+# Stop-loss applied to any approved trade (percentage of entry price).
+stop_loss_pct = 5.0
+# Maximum leverage allowed by policy.
+max_leverage = 1.0
+
+# ── Optional adapters (only used by the example runner) ──────────
+#
+# These are not the product. They exist so `python -m python.main`
+# can demonstrate a caller wiring the verifier into a real exchange.
+
+[adapters.hyperliquid]
+# Fill this in only if you plan to run the example against a real venue.
+# Leave blank to use the in-process FakeObserver / FakeExecutor.
+private_key = ""            # Testnet wallet private key (0x...)
+network     = "testnet"     # "testnet" only; mainnet is not supported.
+coin        = "BTC"
 check_interval_seconds = 60
 
-[risk]
-stop_loss_pct = 5.0     # Hard stop loss (% of entry price)
-
-[paths]
-veritas_core = ".lake/build/bin/veritas-core"  # Lean binary
-db = "data/veritas.db"
+[adapters.llm]
+# Reserved for a future LLM-driven assumption extractor. Unused in v0.1.
+provider = "anthropic"
+api_key  = ""
+model    = "claude-sonnet-4-20250514"

@@ -4,11 +4,34 @@ from __future__ import annotations
 
 This is the trust boundary. Python sends data in, Lean decides, Python
 reads the decision out. Python never interprets or overrides the decision.
+
+Two surfaces live here:
+
+    1. Gate methods (verify_signal / check_constraints / check_portfolio /
+       emit_certificate / classify_exit) — the verifier product surface.
+       These are what `python.verifier.Verifier` drives.
+
+    2. Primitive methods (decide / extract / size / monitor /
+       update_reliability / build_context / judge_signal /
+       execution_quality) — the building blocks the gates are made of.
+       These exist because the bundled example runner still calls them,
+       and because adapters sometimes want a single primitive without
+       the full gate envelope.
+
+Callers building new features should prefer the gate methods.
 """
 
 import json
 import subprocess
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from python.schemas import (
+        AccountConstraints,
+        Portfolio,
+        TradeProposal,
+    )
 
 BINARY_PATH = Path(".lake/build/bin/veritas-core")
 
@@ -37,8 +60,100 @@ class VeritasCore:
             return None
         return json.loads(stdout)
 
+    # ── Gate surface ───────────────────────────────────────────────
+
+    def verify_signal(self, proposal: "TradeProposal") -> dict:
+        """Gate 1: signal consistency."""
+        return self._call("verify-signal", [
+            proposal.direction,
+            str(proposal.funding_rate),
+            str(proposal.price),
+            str(proposal.timestamp),
+            str(proposal.open_interest),
+            str(proposal.notional_usd),
+        ])
+
+    def check_constraints(
+        self, proposal: "TradeProposal", constraints: "AccountConstraints"
+    ) -> dict:
+        """Gate 2: strategy-constraint compatibility."""
+        return self._call("check-constraints", [
+            proposal.direction,
+            str(proposal.notional_usd),
+            str(constraints.equity),
+            str(constraints.reliability),
+            str(constraints.sample_size),
+            str(constraints.max_leverage),
+            str(constraints.max_position_fraction),
+            str(constraints.stop_loss_pct),
+        ])
+
+    def check_portfolio(
+        self,
+        proposal: "TradeProposal",
+        portfolio: "Portfolio",
+        equity: float,
+    ) -> dict:
+        """Gate 3: portfolio interference."""
+        base = [
+            proposal.direction,
+            str(proposal.notional_usd),
+            str(equity),
+            str(portfolio.max_gross_exposure_fraction),
+        ]
+        if not portfolio.positions:
+            args = base + ["none"]
+        else:
+            pos = portfolio.positions[0]
+            args = base + [
+                "one", pos.direction, str(pos.entry_price), str(pos.size),
+            ]
+        return self._call("check-portfolio", args)
+
+    def emit_certificate(
+        self,
+        proposal: "TradeProposal",
+        constraints: "AccountConstraints",
+        portfolio: "Portfolio",
+    ) -> dict:
+        """Run all three gates and return the combined certificate."""
+        base = [
+            proposal.direction,
+            str(proposal.notional_usd),
+            str(proposal.funding_rate),
+            str(proposal.price),
+            str(proposal.timestamp),
+            str(proposal.open_interest),
+            str(constraints.equity),
+            str(constraints.reliability),
+            str(constraints.sample_size),
+            str(constraints.max_leverage),
+            str(constraints.max_position_fraction),
+            str(constraints.stop_loss_pct),
+            str(portfolio.max_gross_exposure_fraction),
+        ]
+        if not portfolio.positions:
+            args = base + ["none"]
+        else:
+            pos = portfolio.positions[0]
+            args = base + [
+                "one", pos.direction, str(pos.entry_price), str(pos.size),
+            ]
+        return self._call("emit-certificate", args)
+
+    def classify_exit(self, snapshot: dict, position: dict) -> dict:
+        """Classify whether an open position should exit, and under which
+        reason (assumption_met / assumption_broke / stop_loss).
+
+        Semantic rename of the `monitor` primitive under gate vocabulary.
+        """
+        return self.monitor(snapshot, position)
+
+    # ── Primitive surface (adapters and the bundled example runner) ──
+
     def decide(self, snapshot: dict) -> dict | None:
-        """Step 2: Ask Lean core whether to trade."""
+        """Policy decider: would Veritas's funding-reversion policy
+        emit a signal in this context?"""
         args = [
             str(snapshot["funding_rate"]),
             str(snapshot["btc_price"]),
@@ -49,7 +164,7 @@ class VeritasCore:
         return self._call("decide", args)
 
     def extract(self, signal: dict) -> list[dict]:
-        """Step 3: Ask Lean core to declare assumptions for a signal."""
+        """Declare the assumptions attached to a signal."""
         result = self._call("extract", [
             signal["direction"],
             str(signal["funding_rate"]),
@@ -58,11 +173,11 @@ class VeritasCore:
         return result if result else []
 
     def size(self, equity: float, reliability: float, sample_size: int) -> dict:
-        """Step 5: Ask Lean core for position size."""
+        """Reliability-adjusted position size (the Gate 2 ceiling)."""
         return self._call("size", [str(equity), str(reliability), str(sample_size)])
 
     def monitor(self, snapshot: dict, position: dict) -> dict:
-        """Step 7: Ask Lean core whether to exit."""
+        """Classify an open position's exit state."""
         return self._call("monitor", [
             str(snapshot["funding_rate"]),
             str(snapshot["btc_price"]),
@@ -78,7 +193,7 @@ class VeritasCore:
         ])
 
     def update_reliability(self, stats: dict, exit_reason: str) -> dict:
-        """Step 8: Ask Lean core to compute updated reliability."""
+        """Apply the reliability update rule in Lean."""
         return self._call("update-reliability", [
             str(stats["wins"]),
             str(stats["total"]),
@@ -86,7 +201,7 @@ class VeritasCore:
         ])
 
     def build_context(self, snapshot: dict) -> dict:
-        """Build rich trial context (regime, price_change, etc.) in Lean."""
+        """Enrich a raw snapshot with regime / price-change fields."""
         return self._call("build-context", [
             str(snapshot.get("funding_rate", 0)),
             str(snapshot.get("btc_price", 0)),
@@ -98,14 +213,14 @@ class VeritasCore:
         ])
 
     def judge_signal(self, exit_reason: str) -> bool:
-        """Ask Lean: was the signal direction correct?"""
+        """Given an exit reason, was the original signal direction correct?"""
         result = self._call("judge-signal", [exit_reason])
         return result["signal_correct"] == "true"
 
     def execution_quality(self, mark_price: float, fill_price: float,
                           exit_price: float, expected_pnl: float,
                           realized_pnl: float) -> dict:
-        """Compute execution quality metrics in Lean."""
+        """Decompose execution quality into slippage / impact / realized vs expected."""
         return self._call("execution-quality", [
             str(mark_price), str(fill_price), str(exit_price),
             str(expected_pnl), str(realized_pnl),

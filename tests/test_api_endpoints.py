@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import tempfile
-from pathlib import Path
-
 import pytest
 from fastapi.testclient import TestClient
 
@@ -154,33 +151,101 @@ def test_trade_not_found():
     assert r.status_code == 404
 
 
-# ── /verify ────────────────────────────────────────────────────────
+# ── /verify/theorem ────────────────────────────────────────────────
 
-def test_verify_proven():
-    r = client.get("/verify/positionSize_zero_at_no_edge")
+def test_verify_theorem_proven():
+    r = client.get("/verify/theorem/positionSize_zero_at_no_edge")
     assert r.status_code == 200
     d = r.json()
     assert d["status"] == "proven"
     assert d["file"] == "Veritas/Finance/PositionSizing.lean"
 
 
-def test_verify_sorry():
-    r = client.get("/verify/positionSize_capped")
-    assert r.status_code == 200
-    assert r.json()["status"] == "sorry"
-
-
-def test_verify_not_found():
-    r = client.get("/verify/nonexistent_theorem")
+def test_verify_theorem_not_found():
+    r = client.get("/verify/theorem/nonexistent_theorem")
     assert r.status_code == 404
 
 
-# ── Read-only enforcement ──────────────────────────────────────────
+def test_verify_theorem_legacy_path():
+    r = client.get("/verify/positionSize_zero_at_no_edge")
+    assert r.status_code == 200
+    assert r.json()["status"] == "proven"
+
+
+# ── /verify/proposal (primary product surface) ─────────────────────
+
+def _proposal_body(**overrides) -> dict:
+    body = {
+        "proposal": {
+            "direction": "LONG",
+            "notional_usd": 1500.0,
+            "funding_rate": 0.0012,
+            "price": 68000.0,
+            "timestamp": 0,
+            "open_interest": 0.0,
+        },
+        "constraints": {
+            "equity": 10000.0,
+            "reliability": 0.8,
+            "sample_size": 20,
+            "max_leverage": 1.0,
+            "max_position_fraction": 0.25,
+            "stop_loss_pct": 5.0,
+        },
+        "portfolio": None,
+    }
+    for k, v in overrides.items():
+        body[k] = v
+    return body
+
+
+def test_verify_proposal_clean_approval():
+    r = client.post("/verify/proposal", json=_proposal_body())
+    assert r.status_code == 200
+    d = r.json()
+    assert d["approves"] is True
+    assert d["gate1"]["verdict"] == "approve"
+    assert d["gate2"]["verdict"] == "approve"
+    assert d["gate3"]["verdict"] == "approve"
+
+
+def test_verify_proposal_direction_conflict():
+    body = _proposal_body()
+    body["proposal"]["funding_rate"] = -0.0008
+    r = client.post("/verify/proposal", json=body)
+    assert r.status_code == 200
+    d = r.json()
+    assert d["approves"] is False
+    assert "direction_conflicts_with_signal" in d["gate1"]["reason_codes"]
+
+
+def test_verify_signal_only():
+    r = client.post("/verify/signal", json=_proposal_body())
+    assert r.status_code == 200
+    assert r.json()["gate"] == 1
+    assert r.json()["result"]["verdict"] == "approve"
+
+
+def test_verify_constraints_only():
+    r = client.post("/verify/constraints", json=_proposal_body())
+    assert r.status_code == 200
+    assert r.json()["gate"] == 2
+    assert r.json()["result"]["verdict"] == "approve"
+
+
+def test_verify_portfolio_only():
+    r = client.post("/verify/portfolio", json=_proposal_body())
+    assert r.status_code == 200
+    assert r.json()["gate"] == 3
+    assert r.json()["result"]["verdict"] == "approve"
+
+
+# ── Read-only enforcement (POST allowed only on /verify/*) ─────────
 
 def test_post_state_rejected():
     r = client.post("/state")
     assert r.status_code == 405
-    assert r.json()["error"] == "veritas_api_is_read_only"
+    assert r.json()["error"] == "veritas_api_write_denied"
 
 
 def test_put_trades_rejected():
@@ -190,4 +255,9 @@ def test_put_trades_rejected():
 
 def test_delete_assumptions_rejected():
     r = client.delete("/assumptions/funding_rate_reverts_within_8h")
+    assert r.status_code == 405
+
+
+def test_post_trades_rejected():
+    r = client.post("/trades")
     assert r.status_code == 405

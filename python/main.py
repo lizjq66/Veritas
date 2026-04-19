@@ -1,23 +1,37 @@
 from __future__ import annotations
 
-"""Orchestration loop — the eight-step cycle.
+"""Example runner — funding-reversion demo loop.
 
-This file contains NO decision logic. Every decision step calls the
-Lean veritas-core binary via the bridge. Python only orchestrates I/O.
+This file is NOT the Veritas product. It is a reference example that
+shows what a trading agent looks like when it sits behind the Veritas
+verifier. The verifier is the product (see `python/verifier.py`). This
+runner exists so new readers have a concrete picture of a caller.
 
-    1. observe  (Python)  → fetch market data
-    2. decide   (Lean)    → should we trade?
-    3. declare  (Lean)    → what are we betting on?
-    4. check    (Python)  → look up assumption reliability from SQLite
-    5. size     (Lean)    → how much to bet?
-    6. execute  (Python)  → place the order
-    7. monitor  (Lean)    → should we exit?
-    8. learn    (Lean+Py) → update reliability, record trade
+The runner glues together:
+
+    - an observer adapter (FakeObserver / HyperliquidObserver)
+    - an executor adapter (FakeExecutor / HyperliquidExecutor)
+    - the Veritas core (via `bridge.VeritasCore`)
+
+It contains NO decision logic. Every decision step calls the Lean
+verification kernel via the bridge. Python only orchestrates I/O.
+
+    1. observe         (adapter) → fetch market data
+    2. decide          (Lean)    → would Veritas's policy fire here?
+    3. declare         (Lean)    → attach assumptions to the signal
+    4. check           (adapter) → look up assumption reliability
+    5. size            (Lean)    → Gate 2 ceiling
+    6. execute         (adapter) → place the order at or below ceiling
+    7. classify-exit   (Lean)    → should the open position close?
+    8. learn           (Lean+Py) → update reliability, record trade
+
+Apps that want only the verifier (no runner, no exchange) should import
+`python.verifier.Verifier` directly and skip this module.
 """
 
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
@@ -72,10 +86,10 @@ def run_loop(
     # Banner
     n_trades = journal.get_trade_count()
     _print()
-    _print("Veritas v0.1 | Lean-native core | BTC-USDC perp")
+    _print("Veritas v0.1 | funding-reversion example runner")
     _print("\u2501" * 50)
-    _print("Core: veritas-core (Lean 4, compiled to native)")
-    _print("Proven theorems: 9/9 | Sorry count: 0 | Axioms: 20")
+    _print("Verifier: veritas-core (Lean 4, compiled to native)")
+    _print("Gates: 1 signal_consistency | 2 constraints | 3 portfolio")
     _print(f"Trades so far: {n_trades}")
     _print()
 
@@ -241,7 +255,12 @@ def run_loop(
 
 
 def run() -> None:
-    """CLI entry point. Use --live to connect to Hyperliquid testnet."""
+    """CLI entry point for the bundled example runner.
+
+    This is not the Veritas product — it is a demo of a trading agent
+    calling the verifier. Use `--live` to route observer/executor to
+    Hyperliquid testnet instead of the fake in-process adapters.
+    """
     live = "--live" in sys.argv
     core = VeritasCore()
 
@@ -257,13 +276,15 @@ def run() -> None:
         with open(cfg_path, "rb") as f:
             cfg = tomllib.load(f)
 
-        pk = cfg["hyperliquid"]["private_key"]
+        # New layout nests the adapter under [adapters.hyperliquid].
+        # Fall back to the old top-level [hyperliquid] block for compatibility.
+        hl_cfg = cfg.get("adapters", {}).get("hyperliquid") or cfg.get("hyperliquid", {})
+        pk = hl_cfg.get("private_key", "")
         if not pk:
-            print("Set hyperliquid.private_key in config.toml")
+            print("Set adapters.hyperliquid.private_key in config.toml")
             sys.exit(1)
 
-        coin = cfg.get("strategy", {}).get("coin", "BTC")
-        interval = cfg.get("strategy", {}).get("check_interval_seconds", 60)
+        coin = hl_cfg.get("coin") or cfg.get("strategy", {}).get("coin", "BTC")
 
         from eth_account import Account
         wallet = Account.from_key(pk)
@@ -273,11 +294,9 @@ def run() -> None:
     else:
         observer = FakeObserver()
         executor = FakeExecutor()
-        interval = 5
 
     try:
-        run_loop(observer=observer, executor=executor, core=core,
-                 max_cycles=0 if live else 0)
+        run_loop(observer=observer, executor=executor, core=core, max_cycles=0)
     except KeyboardInterrupt:
         print("\nshutting down")
 

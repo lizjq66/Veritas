@@ -1,0 +1,110 @@
+/-
+  Veritas.Gates.Types — Shared types for the three-gate verifier.
+
+  A trade proposal enters the verifier; a verdict comes out. The
+  intermediate types are pure data, serializable across the Python/Lean
+  boundary.
+-/
+import Veritas.Types
+
+namespace Veritas.Gates
+
+open Veritas
+
+/-- A proposed trade: direction, intended notional size in USD, and the
+    market context the proposal was formed under. No assumption is
+    attached yet — Gate 1 is responsible for attaching those. -/
+structure TradeProposal where
+  direction : Direction
+  notionalUsd : Float
+  fundingRate : Float
+  price : Float
+  timestamp : Nat
+  openInterest : Float := 0.0
+  deriving Repr, Inhabited
+
+/-- Account-level constraints a proposal must satisfy.
+    All fields are policy inputs, not derived from market state. -/
+structure AccountConstraints where
+  /-- Current account equity in USD. -/
+  equity : Float
+  /-- Maximum fraction of equity any one position may consume
+      (Veritas hard-caps this at 0.25 regardless of input). -/
+  maxPositionFraction : Float
+  /-- Maximum leverage allowed by policy. -/
+  maxLeverage : Float
+  /-- Stop-loss percentage that will be applied to any approved trade. -/
+  stopLossPct : Float
+  /-- Reliability of the assumption behind the proposal (0.0–1.0). -/
+  reliability : Float
+  /-- Number of historical samples backing the reliability score. -/
+  sampleSize : Nat
+  deriving Repr, Inhabited
+
+/-- A thin portfolio snapshot. v0.1 tracks at most one open position
+    per caller, so `positions : List Position` typically has length 0 or 1.
+    The verifier does not assume positions are on any particular asset. -/
+structure Portfolio where
+  positions : List Position
+  /-- Maximum total notional exposure allowed across the portfolio,
+      as a fraction of equity. -/
+  maxGrossExposureFraction : Float
+  deriving Repr, Inhabited
+
+/-- Verdict a gate can return. -/
+inductive Verdict where
+  /-- Proposal passes this gate without modification. -/
+  | Approve
+  /-- Proposal passes only if resized to `newNotionalUsd`. -/
+  | Resize (newNotionalUsd : Float)
+  /-- Proposal is rejected. The string list carries machine-readable reason codes. -/
+  | Reject (codes : List String)
+  deriving Repr, Inhabited
+
+namespace Verdict
+
+def tag : Verdict → String
+  | .Approve       => "approve"
+  | .Resize _      => "resize"
+  | .Reject _      => "reject"
+
+def isApprove : Verdict → Bool
+  | .Approve => true
+  | _        => false
+
+def isReject : Verdict → Bool
+  | .Reject _ => true
+  | _         => false
+
+def resizedNotional? : Verdict → Option Float
+  | .Resize n => some n
+  | _         => none
+
+def reasonCodes : Verdict → List String
+  | .Reject cs => cs
+  | _          => []
+
+end Verdict
+
+/-- Full verification trace across all three gates. This is what the
+    verifier returns, and what `emit-certificate` serializes. -/
+structure Certificate where
+  gate1 : Verdict
+  gate2 : Verdict
+  gate3 : Verdict
+  /-- Assumptions attached by Gate 1. -/
+  assumptions : List Assumption
+  /-- Final approved notional (after any Gate 2/3 resize), or 0.0 if rejected. -/
+  finalNotionalUsd : Float
+  deriving Repr, Inhabited
+
+namespace Certificate
+
+/-- A certificate approves the trade iff every gate approves or resizes,
+    and at least one non-reject verdict is present. -/
+def approves (c : Certificate) : Bool :=
+  !c.gate1.isReject && !c.gate2.isReject && !c.gate3.isReject
+
+end Certificate
+
+end Veritas.Gates

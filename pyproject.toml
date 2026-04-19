@@ -1,11 +1,35 @@
 [project]
 name = "veritas"
 version = "0.1.0"
-description = "Lean-native trust infrastructure for agent-native finance"
+description = "Lean-backed pre-trade verifier for agent-native trading"
 requires-python = ">=3.11"
+
+# Core dependencies for running Veritas as a verifier: the API server,
+# the MCP server, and the Python bindings over the Lean kernel.
 dependencies = [
-    "hyperliquid-python-sdk",
+    "fastapi",
+    "uvicorn",
+    "mcp",
 ]
+
+[project.optional-dependencies]
+# Hyperliquid example runner and its adapters. Install only if you
+# plan to drive the verifier against Hyperliquid.
+hyperliquid = [
+    "hyperliquid-python-sdk",
+    "requests",
+    "eth-account",
+]
+# Test dependencies.
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "httpx",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "strict"
+testpaths = ["tests"]
 
 [build-system]
 requires = ["setuptools>=68.0"]

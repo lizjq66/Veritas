@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-import json
-import tempfile
-from pathlib import Path
-
 import pytest
 
 from python.api import db
@@ -16,8 +12,9 @@ from python.mcp.server import (
     _handle_get_assumption,
     _handle_get_recent_trades,
     _handle_verify_theorem,
+    _handle_verify_proposal,
+    _handle_list_theorems,
     _handle_would_take_signal,
-    _init_db,
 )
 from python import journal
 
@@ -63,9 +60,58 @@ def populated_db(_setup_db):
 
 def test_all_tools_registered():
     names = {t.name for t in TOOLS}
-    expected = {"get_state", "list_assumptions", "get_assumption",
-                "get_recent_trades", "verify_theorem", "would_take_signal"}
+    expected = {
+        "verify_proposal",       # primary surface
+        "list_assumptions",
+        "get_assumption",
+        "verify_theorem",
+        "list_theorems",
+        "get_runner_state",
+        "get_recent_trades",
+    }
     assert names == expected
+
+
+def test_primary_tool_is_verify_proposal():
+    """The first registered tool is the primary product surface."""
+    assert TOOLS[0].name == "verify_proposal"
+
+
+def test_verify_proposal_clean_approval():
+    d = _handle_verify_proposal({
+        "direction": "LONG",
+        "notional_usd": 1500.0,
+        "funding_rate": 0.0012,
+        "price": 68000.0,
+        "equity": 10000.0,
+        "reliability": 0.8,
+        "sample_size": 20,
+    })
+    assert d["approves"] is True
+    assert d["gate1"]["verdict"] == "approve"
+    assert d["gate2"]["verdict"] == "approve"
+    assert d["gate3"]["verdict"] == "approve"
+
+
+def test_verify_proposal_direction_conflict():
+    d = _handle_verify_proposal({
+        "direction": "LONG",
+        "notional_usd": 1500.0,
+        "funding_rate": -0.0008,   # policy would signal SHORT
+        "price": 68000.0,
+        "equity": 10000.0,
+        "reliability": 0.8,
+        "sample_size": 20,
+    })
+    assert d["approves"] is False
+    assert "direction_conflicts_with_signal" in d["gate1"]["reason_codes"]
+
+
+def test_list_theorems_returns_all():
+    d = _handle_list_theorems()
+    names = {t["name"] for t in d["theorems"]}
+    assert "positionSize_capped" in names
+    assert "exitReason_exhaustive" in names
 
 
 def test_tools_have_descriptions():
@@ -144,9 +190,9 @@ def test_verify_proven():
     assert d["status"] == "proven"
 
 
-def test_verify_sorry():
+def test_verify_proven_position_capped():
     d = _handle_verify_theorem("positionSize_capped")
-    assert d["status"] == "sorry"
+    assert d["status"] == "proven"
 
 
 def test_verify_not_found():

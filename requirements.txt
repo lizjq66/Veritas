@@ -1,4 +1,10 @@
-hyperliquid-python-sdk
+# Core verifier dependencies (API + MCP). These are the minimum you
+# need to run Veritas as a pre-trade verifier.
 fastapi
 uvicorn
 mcp
+
+# Optional: bundled Hyperliquid example runner. Only needed if you
+# plan to run `python -m python.main --live` or import the
+# HyperliquidObserver / HyperliquidExecutor adapters.
+hyperliquid-python-sdk
