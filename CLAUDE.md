@@ -55,8 +55,11 @@ Lean and re-expose it via the bridge.
 `tests/test_bypass_invariant.py` fails the build if:
 
 - Python reintroduces decision branching on `Signal`, `ExitDecision`,
-  or `PositionSize` — `grep -rnE "if.*(Signal|ExitDecision|PositionSize)" python/`
-  must return nothing.
+  or `PositionSize`. The check uses Python's `re` with word-boundaries
+  (`\bif\b.*\b(Signal|ExitDecision|PositionSize)\b`) so theorem and
+  function names that merely *contain* a type keyword as a substring
+  (e.g. `verifySignal_approve_implies_consistent`) are not flagged —
+  only real conditional statements branching on these types are.
 - Python mints `Verdict(tag="approve"|"reject"|"resize"` outside
   `python/schemas.py` or `python/verifier.py`.
 - Any module other than `python/bridge.py` invokes `veritas-core`
@@ -105,6 +108,23 @@ Exchange integrations, runners, dashboards, and journals are
 The bundled example runner tags its trades `mock`, `testnet`, or
 `mainnet`. Never mix sources in reliability calculations without
 explicit filtering.
+
+## Gate files carry first-class theorems
+
+Every file under `Veritas/Gates/` exports a soundness theorem that
+states what an Approve (or Resize) verdict from that gate *means*,
+not just what it computes. These theorems are the gate layer's
+public contract:
+
+- `Gates/SignalGate.lean` — `verifySignal_approve_implies_consistent`
+- `Gates/ConstraintGate.lean` — `checkConstraints_approve_within_ceiling`,
+  `checkConstraints_resize_respects_ceiling`
+- `Gates/PortfolioGate.lean` — `checkPortfolio_approve_respects_cap`
+- `Gates/Certificate.lean` — `certificate_soundness` (combined)
+
+When adding a new gate or extending an existing one, ship the
+soundness theorem alongside the dispatch function. A gate without
+its own soundness theorem is a dispatcher, not a verifier.
 
 ## v0.1 ship criterion
 

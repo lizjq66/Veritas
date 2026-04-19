@@ -54,4 +54,92 @@ def emitCertificate
       { gate1 := g1, gate2 := g2, gate3 := g3,
         assumptions := assumptions, finalNotionalUsd := size3 }
 
+-- ── Soundness contract ────────────────────────────────────────────
+
+/-- Certificate soundness: an approving certificate combines the three
+    gate soundness contracts for the submitted proposal.
+
+    If `emitCertificate p c port` returns a certificate whose
+    `approves` flag is true, then:
+
+      1. Gate 1 found the proposal signal-consistent (the strong
+         statement from `verifySignal_approve_implies_consistent`).
+      2. Gate 2's verdict is not a rejection, so the per-gate
+         `checkConstraints_approve_within_ceiling` /
+         `checkConstraints_resize_respects_ceiling` theorem applies
+         to whatever non-reject verdict Gate 2 actually returned.
+      3. Gate 3's verdict is not a rejection, so the per-gate
+         `checkPortfolio_approve_respects_cap` theorem applies when
+         Gate 3 approved.
+
+    Numeric bounds for Gate 2 and Gate 3 are carried by their
+    per-gate theorems; this certificate-level theorem composes the
+    three contracts so a single reading of Certificate.lean covers
+    the combined trust story. -/
+theorem certificate_soundness
+    (p : TradeProposal) (c : AccountConstraints) (port : Portfolio)
+    (h : (emitCertificate p c port).approves = true) :
+    signalConsistent p
+    ∧ (emitCertificate p c port).gate2.isReject = false
+    ∧ (emitCertificate p c port).gate3.isReject = false := by
+  -- Case-split on verifySignal p. Only the (.Approve, _) case is
+  -- consistent with an approving certificate; the rejection and
+  -- (unreachable) resize branches derive a contradiction from h.
+  rcases hv : verifySignal p with ⟨g1, assums⟩
+  cases hg1 : g1 with
+  | Reject codes =>
+    exfalso
+    simp [emitCertificate, hv, hg1, Certificate.approves, Verdict.isReject] at h
+  | Resize n =>
+    -- verifySignal never returns .Resize. Derive False by case
+    -- analysis on its body; in every branch it produces .Approve or .Reject.
+    exfalso
+    have hv1 : (verifySignal p).1 = .Resize n := by rw [hv]; exact hg1
+    cases hd : Strategy.decide
+        ⟨p.fundingRate, p.price, p.timestamp, p.openInterest⟩ with
+    | none => simp [verifySignal, hd] at hv1
+    | some s =>
+      by_cases hdir : (s.direction == p.direction) = true
+      · cases hlist : Strategy.extractAssumptions s with
+        | nil => simp [verifySignal, hd, hdir, hlist] at hv1
+        | cons x xs => simp [verifySignal, hd, hdir, hlist] at hv1
+      · simp [verifySignal, hd, hdir] at hv1
+  | Approve =>
+    -- Gate 1 approved. Apply Gate 1 theorem.
+    have hApprove : (verifySignal p).1 = .Approve := by
+      rw [hv]; exact hg1
+    have hsigcon := verifySignal_approve_implies_consistent p hApprove
+    -- Case-split on Gate 2's verdict.
+    cases hg2 : checkConstraints p c with
+    | Reject codes =>
+      exfalso
+      simp [emitCertificate, hv, hg1, hg2, Certificate.approves, Verdict.isReject] at h
+    | Approve =>
+      -- Case-split on Gate 3's verdict (input proposal p with notional = p.notionalUsd).
+      cases hg3 : checkPortfolio { p with notionalUsd := p.notionalUsd } port c.equity with
+      | Reject codes =>
+        exfalso
+        simp [emitCertificate, hv, hg1, hg2, hg3, Certificate.approves, Verdict.isReject] at h
+      | Approve =>
+        refine ⟨hsigcon, ?_, ?_⟩
+        · simp [emitCertificate, hv, hg1, hg2, hg3, Verdict.isReject]
+        · simp [emitCertificate, hv, hg1, hg2, hg3, Verdict.isReject]
+      | Resize m =>
+        refine ⟨hsigcon, ?_, ?_⟩
+        · simp [emitCertificate, hv, hg1, hg2, hg3, Verdict.isReject]
+        · simp [emitCertificate, hv, hg1, hg2, hg3, Verdict.isReject]
+    | Resize n =>
+      cases hg3 : checkPortfolio { p with notionalUsd := n } port c.equity with
+      | Reject codes =>
+        exfalso
+        simp [emitCertificate, hv, hg1, hg2, hg3, Certificate.approves, Verdict.isReject] at h
+      | Approve =>
+        refine ⟨hsigcon, ?_, ?_⟩
+        · simp [emitCertificate, hv, hg1, hg2, hg3, Verdict.isReject]
+        · simp [emitCertificate, hv, hg1, hg2, hg3, Verdict.isReject]
+      | Resize m =>
+        refine ⟨hsigcon, ?_, ?_⟩
+        · simp [emitCertificate, hv, hg1, hg2, hg3, Verdict.isReject]
+        · simp [emitCertificate, hv, hg1, hg2, hg3, Verdict.isReject]
+
 end Veritas.Gates

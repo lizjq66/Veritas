@@ -54,4 +54,41 @@ def checkPortfolio (p : TradeProposal) (port : Portfolio) (equity : Float) : Ver
       else
         .Resize headroom
 
+-- ── Soundness contract ────────────────────────────────────────────
+
+/-- Gate 3 soundness (approve path): if `checkPortfolio` approves the
+    proposal, the proposal's absolute notional added to existing gross
+    notional stays within the portfolio's gross-exposure cap.
+
+    This lifts the portfolio cap into the gate's public contract. -/
+theorem checkPortfolio_approve_respects_cap
+    (p : TradeProposal) (port : Portfolio) (equity : Float)
+    (h : checkPortfolio p port equity = .Approve) :
+    grossNotional port.positions + Float.abs p.notionalUsd
+      ≤ equity * port.maxGrossExposureFraction := by
+  -- Rewrite `h` past the internal let-bindings so `split at` can
+  -- descend into the if-chain.
+  have h' :
+      (if hasDirectionConflict port.positions p then
+        Verdict.Reject ["direction_conflicts_existing_position"]
+       else if equity * port.maxGrossExposureFraction ≤ 0.0 then
+        Verdict.Reject ["gross_exposure_cap_non_positive"]
+       else if grossNotional port.positions + Float.abs p.notionalUsd
+              ≤ equity * port.maxGrossExposureFraction then
+        Verdict.Approve
+       else if equity * port.maxGrossExposureFraction - grossNotional port.positions ≤ 0.0 then
+        Verdict.Reject ["portfolio_already_at_gross_exposure_cap"]
+       else
+        Verdict.Resize (equity * port.maxGrossExposureFraction - grossNotional port.positions))
+        = .Approve := h
+  split at h'
+  · cases h'
+  · split at h'
+    · cases h'
+    · split at h'
+      · rename_i hle; exact hle
+      · split at h'
+        · cases h'
+        · cases h'
+
 end Veritas.Gates

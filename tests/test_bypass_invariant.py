@@ -7,6 +7,7 @@ introduces gate logic into Python fails CI.
 
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 
@@ -15,16 +16,31 @@ PY_DIR = Path("python")
 
 
 def _grep(pattern: str) -> str:
-    result = subprocess.run(
-        ["grep", "-rnE", pattern, str(PY_DIR)],
-        capture_output=True, text=True,
-    )
-    return result.stdout
+    """Search all .py files under python/ and return ``path:line:text`` for matches.
+
+    Uses Python's ``re`` module (which supports ``\\b`` and other
+    escapes that BSD grep handles inconsistently)."""
+    prog = re.compile(pattern)
+    lines = []
+    for path in PY_DIR.rglob("*.py"):
+        try:
+            text = path.read_text()
+        except UnicodeDecodeError:
+            continue
+        for lineno, line in enumerate(text.splitlines(), 1):
+            if prog.search(line):
+                lines.append(f"{path}:{lineno}:{line}")
+    return "\n".join(lines) + ("\n" if lines else "")
 
 
 def test_no_python_decision_logic():
-    """Python must contain no trade-decision branching on Veritas types."""
-    output = _grep(r"if.*(Signal|ExitDecision|PositionSize)")
+    """Python must contain no trade-decision branching on Veritas types.
+
+    Uses word-boundaries so theorem/function names that merely *contain*
+    a type keyword (e.g. ``verifySignal``) are not flagged. A real
+    offense would look like ``if Signal(...)`` or ``if some_signal
+    == Signal.LONG``."""
+    output = _grep(r"\bif\b.*\b(Signal|ExitDecision|PositionSize)\b")
     assert output.strip() == "", (
         "Python has reintroduced decision logic. "
         "Move it to Lean and call it via the bridge.\n" + output

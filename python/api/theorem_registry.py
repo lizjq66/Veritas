@@ -99,4 +99,58 @@ THEOREMS: dict[str, dict] = {
         "axioms_used": ["Float.div_nonneg", "Float.div_le_one",
                         "Float.Nat_toFloat_nonneg", "Float.Nat_toFloat_pos"],
     },
+    # ── Gate-layer soundness contracts ─────────────────────────────
+    # These are first-class theorems living in Veritas/Gates/*.lean.
+    # They document what each gate's Approve/Resize verdict *means*,
+    # independent of the underlying Finance/Strategy layer.
+    "verifySignal_approve_implies_consistent": {
+        "gate": 1,
+        "file": "Veritas/Gates/SignalGate.lean",
+        "status": "proven",
+        "statement_natural_language":
+            "If Gate 1 approves a proposal, then the proposal is "
+            "signal-consistent: Veritas's own policy would emit a signal "
+            "for the submitted context, its direction matches the "
+            "proposal's, and at least one assumption is attached.",
+        "axioms_used": [],
+    },
+    "checkConstraints_approve_within_ceiling": {
+        "gate": 2,
+        "file": "Veritas/Gates/ConstraintGate.lean",
+        "status": "proven",
+        "statement_natural_language":
+            "If Gate 2 approves a proposal, its notional is at most the "
+            "reliability-adjusted ceiling computed by calculatePositionSize.",
+        "axioms_used": [],
+    },
+    "checkConstraints_resize_respects_ceiling": {
+        "gate": 2,
+        "file": "Veritas/Gates/ConstraintGate.lean",
+        "status": "proven",
+        "statement_natural_language":
+            "If Gate 2 resizes a proposal to notional n, then n is at most "
+            "the reliability-adjusted ceiling.",
+        "axioms_used": ["Float.le_refl"],
+    },
+    "checkPortfolio_approve_respects_cap": {
+        "gate": 3,
+        "file": "Veritas/Gates/PortfolioGate.lean",
+        "status": "proven",
+        "statement_natural_language":
+            "If Gate 3 approves a proposal, then adding its absolute "
+            "notional to existing gross notional stays within the "
+            "portfolio's gross-exposure cap.",
+        "axioms_used": [],
+    },
+    "certificate_soundness": {
+        "gate": "combined",
+        "file": "Veritas/Gates/Certificate.lean",
+        "status": "proven",
+        "statement_natural_language":
+            "If a certificate emitted for a proposal approves, then Gate 1 "
+            "found the proposal signal-consistent, Gate 2's verdict is not "
+            "a rejection, and Gate 3's verdict is not a rejection. Numeric "
+            "bounds for Gates 2 and 3 follow from their per-gate theorems.",
+        "axioms_used": [],
+    },
 }

@@ -416,10 +416,20 @@ def test_exploration_phase_uses_fixed_size():
 
 
 def test_no_python_decision_logic():
-    """Verify Python shell contains no trade decision logic."""
-    import subprocess
-    result = subprocess.run(
-        ["grep", "-rnE", r"if.*(Signal|ExitDecision|PositionSize)", "python/"],
-        capture_output=True, text=True,
-    )
-    assert result.stdout.strip() == ""
+    """Verify Python shell contains no trade decision logic.
+
+    Word-boundary regex so theorem/function names that merely contain
+    a type keyword as a substring (e.g. ``verifySignal``) are not
+    flagged."""
+    import re
+    prog = re.compile(r"\bif\b.*\b(Signal|ExitDecision|PositionSize)\b")
+    for path in Path("python").rglob("*.py"):
+        try:
+            text = path.read_text()
+        except UnicodeDecodeError:
+            continue
+        for lineno, line in enumerate(text.splitlines(), 1):
+            assert not prog.search(line), (
+                f"Python has reintroduced decision logic at "
+                f"{path}:{lineno}: {line.strip()}"
+            )
