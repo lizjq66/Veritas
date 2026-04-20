@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/assets/veritas.svg" width="96" alt="Veritas">
+
 # Veritas
 
 A Lean-backed pre-trade verifier for AI trading agents.
