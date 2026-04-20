@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Veritas</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+    .mono { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    .rel-bar { transition: width 0.3s ease; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen">
+
+  <!-- Header -->
+  <header class="bg-white border-b border-slate-200 px-6 py-4">
+    <div class="max-w-6xl mx-auto flex items-center justify-between">
+      <div>
+        <h1 class="text-2xl font-bold tracking-tight">Veritas</h1>
+        <p class="text-sm text-slate-500">Lean-backed pre-trade verifier &middot; v0.1</p>
+      </div>
+      <div class="text-right">
+        <div id="status-badge" class="inline-flex items-center gap-1.5 text-sm font-medium text-slate-400">
+          <span id="status-dot" class="w-2 h-2 rounded-full bg-slate-300"></span>
+          <span id="status-text">Connecting</span>
+        </div>
+        <div id="last-updated" class="text-xs text-slate-400 mt-0.5"></div>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-6 py-6 space-y-6">
+
+    <!-- State cards -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4" id="cards">
+      <div class="bg-white rounded-lg border border-slate-200 p-4">
+        <div class="text-xs text-slate-500 uppercase tracking-wide mb-1">Phase</div>
+        <div id="c-phase" class="text-lg font-semibold">--</div>
+      </div>
+      <div class="bg-white rounded-lg border border-slate-200 p-4">
+        <div class="text-xs text-slate-500 uppercase tracking-wide mb-1">Trades</div>
+        <div id="c-trades" class="text-2xl font-bold mono">--</div>
+        <div id="c-trades-sub" class="text-xs text-slate-400 mt-0.5"></div>
+      </div>
+      <div class="bg-white rounded-lg border border-slate-200 p-4">
+        <div class="text-xs text-slate-500 uppercase tracking-wide mb-1">Win Rate</div>
+        <div id="c-winrate" class="text-2xl font-bold mono">--</div>
+      </div>
+      <div class="bg-white rounded-lg border border-slate-200 p-4">
+        <div class="text-xs text-slate-500 uppercase tracking-wide mb-1">Equity</div>
+        <div id="c-equity" class="text-2xl font-bold mono">--</div>
+        <div id="c-pnl" class="text-xs mt-0.5 mono"></div>
+      </div>
+    </div>
+
+    <!-- Current position -->
+    <div class="bg-white rounded-lg border border-slate-200 p-4">
+      <div class="text-xs text-slate-500 uppercase tracking-wide mb-2">Current Position</div>
+      <div id="position" class="text-slate-400 italic">Loading...</div>
+    </div>
+
+    <!-- Assumption library -->
+    <div class="bg-white rounded-lg border border-slate-200 overflow-hidden">
+      <div class="px-4 py-3 border-b border-slate-100">
+        <h2 class="text-sm font-semibold text-slate-700">Assumption Library</h2>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-slate-50 text-left text-xs text-slate-500 uppercase">
+            <tr>
+              <th class="px-4 py-2">Name</th>
+              <th class="px-4 py-2">Wins / Total</th>
+              <th class="px-4 py-2 w-48">Reliability</th>
+              <th class="px-4 py-2">Updated</th>
+            </tr>
+          </thead>
+          <tbody id="assumptions-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Recent trades -->
+    <div class="bg-white rounded-lg border border-slate-200 overflow-hidden">
+      <div class="px-4 py-3 border-b border-slate-100">
+        <h2 class="text-sm font-semibold text-slate-700">Recent Trades</h2>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-slate-50 text-left text-xs text-slate-500 uppercase">
+            <tr>
+              <th class="px-4 py-2">Time</th>
+              <th class="px-4 py-2">Direction</th>
+              <th class="px-4 py-2">Entry</th>
+              <th class="px-4 py-2">Exit</th>
+              <th class="px-4 py-2">Size</th>
+              <th class="px-4 py-2">Reason</th>
+              <th class="px-4 py-2 text-right">PnL</th>
+            </tr>
+          </thead>
+          <tbody id="trades-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Live event stream -->
+    <div class="bg-white rounded-lg border border-slate-200 overflow-hidden">
+      <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+        <h2 class="text-sm font-semibold text-slate-700">Live Event Stream</h2>
+        <span id="stream-badge" class="text-xs text-slate-400">polling</span>
+      </div>
+      <div id="event-stream" class="h-64 overflow-y-auto px-4 py-2 space-y-1 text-xs bg-slate-50">
+        <div class="text-slate-400 italic">Waiting for events...</div>
+      </div>
+    </div>
+
+  </main>
+
+  <footer class="max-w-6xl mx-auto px-6 py-4 text-xs text-slate-400 text-center">
+    Veritas v0.1 &middot; Verification console &middot; Gates: signal &middot; constraints &middot; portfolio
+  </footer>
+
+<script>
+// ── State ────────────────────────────────────────────────────────
+let lastFetchOk = false;
+let lastFetchTime = null;
+
+// ── Helpers ──────────────────────────────────────────────────────
+function $(id) { return document.getElementById(id); }
+
+function relTime(ts) {
+  if (!ts) return '--';
+  const d = new Date(ts);
+  if (isNaN(d)) return ts;
+  const s = Math.floor((Date.now() - d) / 1000);
+  if (s < 5) return 'just now';
+  if (s < 60) return s + 's ago';
+  if (s < 3600) return Math.floor(s / 60) + 'm ago';
+  if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+  return Math.floor(s / 86400) + 'd ago';
+}
+
+function usd(v) {
+  if (v == null) return '--';
+  return '$' + Number(v).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+
+function pct(v) {
+  if (v == null) return '--';
+  return (v * 100).toFixed(1) + '%';
+}
+
+function badge(text, color) {
+  const colors = {
+    blue: 'bg-blue-100 text-blue-700',
+    green: 'bg-emerald-100 text-emerald-700',
+    red: 'bg-red-100 text-red-700',
+    orange: 'bg-amber-100 text-amber-700',
+    gray: 'bg-slate-100 text-slate-600',
+  };
+  return `<span class="inline-block px-2 py-0.5 rounded text-xs font-medium ${colors[color] || colors.gray}">${text}</span>`;
+}
+
+function reasonBadge(r) {
+  if (!r) return badge('Open', 'gray');
+  if (r === 'assumption_met') return badge('met', 'green');
+  if (r === 'assumption_broke') return badge('broke', 'orange');
+  if (r === 'stop_loss') return badge('stop', 'red');
+  return badge(r, 'gray');
+}
+
+function dirBadge(d) {
+  return d === 'LONG' ? badge('LONG', 'green') : badge('SHORT', 'red');
+}
+
+function pnlSpan(v) {
+  if (v == null) return '<span class="text-slate-400">--</span>';
+  const c = v >= 0 ? 'text-emerald-600' : 'text-red-600';
+  const sign = v >= 0 ? '+' : '';
+  return `<span class="mono ${c}">${sign}${v.toFixed(4)}%</span>`;
+}
+
+// ── Renderers ────────────────────────────────────────────────────
+function renderState(d) {
+  const isExplore = d.phase === 'exploration';
+  $('c-phase').innerHTML = isExplore ? badge('Exploration', 'blue') : badge('Exploitation', 'green');
+  $('c-trades').textContent = d.trade_count;
+  const expDone = Math.min(d.trade_count, d.exploration_threshold);
+  $('c-trades-sub').textContent = expDone + '/' + d.exploration_threshold + ' exploration';
+  $('c-winrate').textContent = d.win_rate != null ? pct(d.win_rate) : '--';
+  $('c-equity').textContent = usd(d.equity_estimate);
+  if (d.total_pnl != null) {
+    const c = d.total_pnl >= 0 ? 'text-emerald-600' : 'text-red-600';
+    const sign = d.total_pnl >= 0 ? '+' : '';
+    $('c-pnl').innerHTML = `<span class="${c}">${sign}${usd(d.total_pnl)}</span>`;
+  }
+  if (d.current_position) {
+    const p = d.current_position;
+    $('position').innerHTML = `
+      <div class="flex items-center gap-3">
+        ${dirBadge(p.direction)}
+        <span class="mono font-semibold">${usd(p.entry_price)}</span>
+        <span class="text-slate-400">size ${p.size.toFixed(6)}</span>
+      </div>`;
+  } else {
+    $('position').innerHTML = '<span class="text-slate-400 italic">No open position</span>';
+  }
+}
+
+function renderAssumptions(d) {
+  const body = $('assumptions-body');
+  if (!d.assumptions || d.assumptions.length === 0) {
+    body.innerHTML = '<tr><td colspan="4" class="px-4 py-3 text-slate-400 italic">No assumptions</td></tr>';
+    return;
+  }
+  body.innerHTML = d.assumptions.map(a => {
+    const rel = a.reliability;
+    const pctW = (rel * 100).toFixed(0);
+    return `<tr class="border-t border-slate-100 hover:bg-slate-50">
+      <td class="px-4 py-2.5">
+        <div class="mono text-xs font-medium">${a.name}</div>
+        <div class="text-xs text-slate-400 truncate max-w-xs" title="${a.description}">${a.description}</div>
+      </td>
+      <td class="px-4 py-2.5 mono text-xs">${a.wins} / ${a.total}</td>
+      <td class="px-4 py-2.5">
+        <div class="flex items-center gap-2">
+          <div class="flex-1 bg-slate-100 rounded-full h-2 overflow-hidden">
+            <div class="rel-bar bg-emerald-500 h-2 rounded-full" style="width:${pctW}%"></div>
+          </div>
+          <span class="mono text-xs w-10 text-right">${pctW}%</span>
+        </div>
+      </td>
+      <td class="px-4 py-2.5 text-xs text-slate-400">${relTime(a.last_updated)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderTrades(d) {
+  const body = $('trades-body');
+  if (!d.trades || d.trades.length === 0) {
+    body.innerHTML = '<tr><td colspan="7" class="px-4 py-3 text-slate-400 italic">No trades yet</td></tr>';
+    return;
+  }
+  body.innerHTML = d.trades.map(t => `
+    <tr class="border-t border-slate-100 hover:bg-slate-50">
+      <td class="px-4 py-2 text-xs text-slate-500">${t.entry_time || '--'}</td>
+      <td class="px-4 py-2">${dirBadge(t.direction)}</td>
+      <td class="px-4 py-2 mono text-xs">${usd(t.entry_price)}</td>
+      <td class="px-4 py-2 mono text-xs">${t.exit_price != null ? usd(t.exit_price) : '--'}</td>
+      <td class="px-4 py-2 mono text-xs">${t.size ? t.size.toFixed(6) : '--'}</td>
+      <td class="px-4 py-2">${reasonBadge(t.exit_reason)}</td>
+      <td class="px-4 py-2 text-right">${pnlSpan(t.pnl)}</td>
+    </tr>
+  `).join('');
+}
+
+// ── Status badge ─────────────────────────────────────────────────
+function setStatus(ok) {
+  lastFetchOk = ok;
+  if (ok) {
+    lastFetchTime = Date.now();
+    $('status-dot').className = 'w-2 h-2 rounded-full bg-emerald-500';
+    $('status-text').textContent = 'Live';
+    $('status-badge').className = 'inline-flex items-center gap-1.5 text-sm font-medium text-emerald-600';
+  } else {
+    $('status-dot').className = 'w-2 h-2 rounded-full bg-slate-300';
+    $('status-text').textContent = 'Offline';
+    $('status-badge').className = 'inline-flex items-center gap-1.5 text-sm font-medium text-slate-400';
+  }
+}
+
+// ── Event stream rendering ───────────────────────────────────────
+const MAX_EVENTS = 30;
+let eventLines = [];
+const evtColors = {
+  observe: 'bg-slate-200 text-slate-600',
+  decide: 'bg-blue-100 text-blue-700',
+  size: 'bg-violet-100 text-violet-700',
+  execute_open: 'bg-emerald-100 text-emerald-700',
+  execute_close: 'bg-amber-100 text-amber-700',
+  monitor: 'bg-slate-200 text-slate-600',
+  learn: 'bg-purple-100 text-purple-700',
+};
+function evtSummary(e) {
+  switch (e.type) {
+    case 'observe': return e.snapshot ? `funding ${e.snapshot.funding_rate > 0 ? '+' : ''}${e.snapshot.funding_rate.toFixed(6)}  $${Number(e.snapshot.btc_price).toLocaleString()}` : '';
+    case 'decide': return e.signal ? e.signal.direction : 'no signal';
+    case 'size': return `$${Number(e.position_size||0).toFixed(0)} (${(e.reliability*100).toFixed(0)}% rel)`;
+    case 'execute_open': return `${e.direction} ${Number(e.size||0).toFixed(6)} @ $${Number(e.price||0).toLocaleString()}`;
+    case 'execute_close': return `${e.reason} (${e.pnl>0?'+':''}${Number(e.pnl||0).toFixed(2)}%)`;
+    case 'monitor': return e.action || 'hold';
+    case 'learn': return e.new_stats ? `${e.new_stats.wins}/${e.new_stats.total} (${(e.new_stats.reliability*100).toFixed(0)}%)` : '';
+    default: return '';
+  }
+}
+function pushEvent(e) {
+  const ts = e.timestamp || '--:--:--';
+  const color = evtColors[e.type] || 'bg-slate-100 text-slate-400';
+  const html = `<div class="flex items-center gap-2"><span class="text-slate-400 mono w-16 shrink-0">${ts}</span><span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${color} w-24 text-center shrink-0">${e.type}</span><span class="text-slate-600 truncate">${evtSummary(e)}</span></div>`;
+  eventLines.push(html);
+  if (eventLines.length > MAX_EVENTS) eventLines.shift();
+  const c = $('event-stream');
+  c.innerHTML = eventLines.join('');
+  c.scrollTop = c.scrollHeight;
+}
+
+// ── REST polling (fallback) ─────────────────────────────────────
+async function fetchAll() {
+  try {
+    const [stateR, assR, tradesR] = await Promise.all([
+      fetch('/state'), fetch('/assumptions'), fetch('/trades?limit=10')
+    ]);
+    if (!stateR.ok || !assR.ok || !tradesR.ok) throw new Error('fetch failed');
+    const [state, ass, trades] = await Promise.all([
+      stateR.json(), assR.json(), tradesR.json()
+    ]);
+    renderState(state);
+    renderAssumptions(ass);
+    renderTrades(trades);
+    setStatus(true);
+  } catch (e) {
+    setStatus(false);
+  }
+}
+
+// ── SSE connection ──────────────────────────────────────────────
+let pollInterval = null;
+function startSSE() {
+  const es = new EventSource('/stream/events');
+  es.onopen = () => {
+    $('stream-badge').textContent = 'streaming';
+    $('stream-badge').className = 'text-xs text-emerald-600 font-medium';
+    if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+  };
+  es.onmessage = (msg) => {
+    try {
+      const event = JSON.parse(msg.data);
+      pushEvent(event);
+      setStatus(true);
+      if (['execute_open','execute_close','learn'].includes(event.type)) fetchAll();
+    } catch (_) {}
+  };
+  es.onerror = () => {
+    $('stream-badge').textContent = 'polling';
+    $('stream-badge').className = 'text-xs text-slate-400';
+    if (!pollInterval) pollInterval = setInterval(fetchAll, 2000);
+  };
+}
+
+// ── Bootstrap ───────────────────────────────────────────────────
+setInterval(() => {
+  if (lastFetchTime) {
+    const s = Math.floor((Date.now() - lastFetchTime) / 1000);
+    $('last-updated').textContent = 'Updated ' + (s < 2 ? 'just now' : s + 's ago');
+  }
+}, 1000);
+fetchAll();
+pollInterval = setInterval(fetchAll, 2000);
+startSSE();
+</script>
+
+</body>
+</html>

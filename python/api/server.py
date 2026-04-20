@@ -89,5 +89,15 @@ async def health() -> dict:
 
 
 @app.get("/", include_in_schema=False)
-async def dashboard():
+async def demo_page():
+    """Verification playground — the product surface as a web UI.
+    Agents use POST /verify/proposal; humans use this page to see what
+    happens when they do."""
     return FileResponse(str(_STATIC_DIR / "index.html"))
+
+
+@app.get("/runner", include_in_schema=False)
+async def runner_dashboard():
+    """Example-runner dashboard — shows state / assumptions / trades
+    from the bundled funding-reversion caller. Secondary surface."""
+    return FileResponse(str(_STATIC_DIR / "runner.html"))
