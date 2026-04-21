@@ -7,6 +7,7 @@
 \usepackage{amsmath, amssymb, amsthm}
 \usepackage{mathtools}
 \usepackage{booktabs}
+\usepackage{tabularx}
 \usepackage{enumitem}
 \usepackage{xcolor}
 \usepackage{listings}
@@ -192,23 +193,22 @@ receive an \texttt{upstream\_gate\_rejected} marker and the final
 notional is zero.
 
 \begin{table}[h]
-\centering
 \small
-\begin{tabular}{@{}lll@{}}
+\begin{tabularx}{\linewidth}{@{}lXl@{}}
 \toprule
 Gate & Question & Output \\
 \midrule
 1. Signal consistency
   & Direction agrees with policy?
-  & \textsc{approve} / \textsc{reject} \\
-2. Constraint compatibility
+  & approve / reject \\
+2. Constraint compat.
   & Size fits the reliability-adjusted ceiling?
-  & \textsc{approve} / \textsc{resize} / \textsc{reject} \\
+  & approve / resize / reject \\
 3. Portfolio interference
-  & Clashes with existing positions? Breaches cap?
-  & \textsc{approve} / \textsc{resize} / \textsc{reject} \\
+  & Clash with existing positions or cap breach?
+  & approve / resize / reject \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \caption{The three gates.}
 \label{tab:gates}
 \end{table}
@@ -229,8 +229,9 @@ has three tags, each carrying the data needed for that tag and nothing
 more.
 
 \paragraph{Theorem-backed numeric behavior.}
-\texttt{Finance.PositionSizing} ships five theorems (non-negativity,
-25\%-cap, zero-at-no-edge, monotone-in-reliability, exploration-cap-at-1\%).
+\texttt{Finance.PositionSizing} ships five theorems: non-negativity,
+a 25\% equity cap, zero-at-no-edge, monotonicity in reliability, and
+an exploration cap at 1\%.
 \texttt{Strategy.ExitLogic} ships \texttt{exitReason\_exhaustive}.
 \texttt{Learning.Reliability} ships bounded-in-$[0,1]$ and
 monotone-on-wins. These eliminate categories of silent miscount; a
@@ -255,23 +256,27 @@ the underlying strategy and finance modules. The theorems, all closed
 under the 20 Float axioms, are summarized in Table~\ref{tab:thms}.
 
 \begin{table}[h]
-\small
-\begin{tabular}{@{}ll@{}}
+\footnotesize
+\begin{tabularx}{\linewidth}{@{}lX@{}}
 \toprule
 Theorem & Statement (informal) \\
 \midrule
-\texttt{verifySignal\_approve\_implies\_consistent}
-  & Gate~1 \textsc{approve} $\Rightarrow$ proposal is signal-consistent. \\
-\texttt{checkConstraints\_approve\_within\_ceiling}
-  & Gate~2 \textsc{approve} $\Rightarrow$ $p.\texttt{notional} \leq \texttt{ceiling}$. \\
-\texttt{checkConstraints\_resize\_respects\_ceiling}
-  & Gate~2 \textsc{resize}~$n$ $\Rightarrow$ $n \leq \texttt{ceiling}$. \\
-\texttt{checkPortfolio\_approve\_respects\_cap}
-  & Gate~3 \textsc{approve} $\Rightarrow$ gross notional under cap. \\
+\texttt{verifySignal\_approve\_}
+\texttt{implies\_consistent}
+  & Gate~1 approve $\Rightarrow$ the proposal is signal-consistent. \\[4pt]
+\texttt{checkConstraints\_approve\_}
+\texttt{within\_ceiling}
+  & Gate~2 approve $\Rightarrow$ $p.\texttt{notional} \leq \texttt{ceiling}$. \\[4pt]
+\texttt{checkConstraints\_resize\_}
+\texttt{respects\_ceiling}
+  & Gate~2 resize~$n$ $\Rightarrow$ $n \leq \texttt{ceiling}$. \\[4pt]
+\texttt{checkPortfolio\_approve\_}
+\texttt{respects\_cap}
+  & Gate~3 approve $\Rightarrow$ gross notional stays under the cap. \\[4pt]
 \texttt{certificate\_soundness}
-  & \texttt{approves} $= \text{true}$ $\Rightarrow$ Gate~1 consistent $\wedge$ Gate~2/3 non-reject. \\
+  & \texttt{approves} true $\Rightarrow$ Gate~1 consistent and Gate~2/3 non-reject. \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \caption{Gate-layer soundness theorems in \texttt{Veritas/Gates/}.}
 \label{tab:thms}
 \end{table}
@@ -294,13 +299,14 @@ the first ten samples.
 
 The combined soundness theorem connects the chain:
 \begin{theorem}[\texttt{certificate\_soundness}]
-For every $p, c, \text{port}$, if
-$\texttt{emitCertificate}(p, c, \text{port}).\texttt{approves} = \text{true}$
-then:
+For every proposal $p$, account constraints $c$, and portfolio
+$\text{port}$, let
+$\texttt{cert} \coloneqq \texttt{emitCertificate}(p, c, \text{port})$.
+If $\texttt{cert}.\texttt{approves} = \text{true}$, then
 \begin{enumerate}[leftmargin=2em, itemsep=1pt, topsep=2pt]
 \item $\texttt{signalConsistent}(p)$ holds;
-\item the certificate's \texttt{gate2} verdict is not a \textsc{reject};
-\item the certificate's \texttt{gate3} verdict is not a \textsc{reject}.
+\item the certificate's \texttt{gate2} verdict is not a rejection;
+\item the certificate's \texttt{gate3} verdict is not a rejection.
 \end{enumerate}
 \end{theorem}
 \noindent Numeric bounds for Gates~2 and 3 follow by instantiating the
