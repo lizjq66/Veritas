@@ -7,6 +7,7 @@
 A Lean-backed pre-trade verifier for AI trading agents.
 One HTTP call between your agent's intent and the exchange.
 
+[![paper](https://img.shields.io/badge/paper-LaTeX-red)](docs/paper/veritas.tex)
 [![license](https://img.shields.io/badge/license-Apache_2.0-blue.svg)](LICENSE)
 [![release](https://img.shields.io/badge/release-v0.1-green)](https://github.com/lizjq66/Veritas/releases)
 [![Lean](https://img.shields.io/badge/Lean-4.29-orange)](lean-toolchain)
@@ -60,8 +61,9 @@ curl -sX POST http://localhost:8000/verify/proposal \
 
 ## Docs
 
+- **[`docs/paper/veritas.tex`](docs/paper/veritas.tex)** — paper (LaTeX, `make` to build PDF)
 - **[`docs/PRODUCT_BRIEF.md`](docs/PRODUCT_BRIEF.md)** — what v0.1 ships, gate contracts, out-of-scope items
-- **[`docs/POSITION_PAPER.md`](docs/POSITION_PAPER.md)** — why a verifier is the right product boundary
+- **[`docs/POSITION_PAPER.md`](docs/POSITION_PAPER.md)** — prose companion to the paper
 - **[`examples/external_integration/`](examples/external_integration/)** — Anthropic SDK + LangGraph working demos
 - **[`CLAUDE.md`](CLAUDE.md)** — contributor guide
 

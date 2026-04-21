@@ -1,0 +1,496 @@
+\documentclass[11pt, a4paper]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{mathtools}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage[hidelinks]{hyperref}
+\usepackage{url}
+\usepackage{parskip}
+
+% ── Listings style ────────────────────────────────────────────────
+\definecolor{codebg}{HTML}{F5F5F7}
+\definecolor{codekw}{HTML}{0F172A}
+\definecolor{codecm}{HTML}{6B7280}
+
+\lstdefinestyle{mono}{
+  basicstyle=\small\ttfamily,
+  backgroundcolor=\color{codebg},
+  commentstyle=\color{codecm}\itshape,
+  keywordstyle=\color{codekw}\bfseries,
+  frame=single,
+  framerule=0pt,
+  xleftmargin=10pt,
+  xrightmargin=10pt,
+  aboveskip=6pt,
+  belowskip=6pt,
+  breaklines=true,
+  showstringspaces=false,
+}
+\lstset{style=mono}
+
+% ── Theorem environments ─────────────────────────────────────────
+\newtheorem{theorem}{Theorem}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{proposition}[theorem]{Proposition}
+
+% ── Title ────────────────────────────────────────────────────────
+\title{\textbf{Veritas:} A Lean-Backed Pre-Trade Verifier \\ for Agent-Native Finance}
+\author{The Veritas Project \\ \texttt{\small github.com/lizjq66/Veritas}}
+\date{Version 0.1 --- April 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+Automated trading agents increasingly act on capital through exchange APIs
+at rates that outpace manual oversight. The public discussion frames this as
+a \emph{prediction quality} problem and invests accordingly in larger models
+and denser backtests. We argue that the more load-bearing failure mode of
+current agent stacks is \emph{pre-trade approval}: agents take trades whose
+operators would have intervened had they been given the chance, and do so
+without producing a legible account of what they are about to do.
+
+We present \textbf{Veritas}, a pre-trade verification system with a small
+fixed contract. Given a trade proposal, account constraints, and existing
+portfolio, Veritas returns a structured certificate indicating
+\textsc{approve} / \textsc{resize} / \textsc{reject} for each of three
+orthogonal gates: (1)~signal consistency, (2)~strategy-constraint
+compatibility, (3)~portfolio interference. Gate logic is written in
+Lean~4~\cite{lean4} with closed soundness proofs; Python is transport.
+Veritas is not a trading agent; it is the thing agents call before moving
+capital. This paper describes the design, the five gate-layer soundness
+theorems, the 20-axiom Float basis the proofs depend on, and the v0.1
+deliverable.
+\end{abstract}
+
+% ── 1. Introduction ──────────────────────────────────────────────
+\section{Introduction}
+\label{sec:intro}
+
+The first visible failure of automated trading agents is that they lose
+money. The first visible fix, therefore, is that they should predict better.
+Every LLM-trading-agent release ships with a benchmark bar chart.
+
+Empirically, though, the first several generations of agent stacks fail in
+a recognizable second way: they take trades their operators would have
+blocked if they had been given the chance. An agent decides to lever up a
+correlated basket one minute before a scheduled Fed release. An agent opens
+a ten-percent notional position on a pair whose liquidity it has not traded
+before. An agent doubles down on a rejected thesis because the reviewer
+prompt does not surface the reject.
+
+These are not prediction failures. They are \emph{approval} failures. The
+agent knew what it wanted to do; nothing in the system forced it to
+articulate the claim, check the claim against an envelope, and account for
+existing exposure before committing.
+
+The industry response so far has been either (a)~add another LLM to critique
+the first, or (b)~bolt post-trade risk controls on top of an opaque
+decision loop. The first restates the problem in a larger system; the
+second is reactive by construction --- it learns about a breach after the
+money has moved.
+
+Between intent and execution, there should be a \emph{pre-trade} gate that
+is (i)~narrower than the agent, (ii)~legibly auditable, and (iii)~not
+produced by the same process that produced the trade. This is the space
+Veritas occupies.
+
+\paragraph{Contributions.}
+\begin{itemize}[leftmargin=1.5em, itemsep=2pt, topsep=2pt]
+\item A three-gate decomposition of pre-trade verification (Section~\ref{sec:gates}).
+\item A Lean~4 implementation with five gate-layer soundness theorems,
+      two Kelly theorems, five position-sizing theorems, an
+      exit-exhaustiveness theorem, and two reliability-update theorems,
+      all with closed proofs (Section~\ref{sec:formal}).
+\item A uniform HTTP / MCP~\cite{mcp} / Python / CLI contract over a
+      single kernel, covered by 86 tests with no mocks on the kernel.
+\item CI-enforced boundary invariants preventing the Python layer from
+      reintroducing decision logic or minting approvals outside the
+      kernel.
+\end{itemize}
+
+% ── 2. The verifier boundary ─────────────────────────────────────
+\section{The Verifier Boundary}
+\label{sec:boundary}
+
+The formal-methods community has decades of experience with tools that sit
+between a producer and a consumer and discharge obligations on the
+producer's behalf: model checkers, static analyzers, type systems, SMT
+solvers. The design pattern is consistent: small, fixed input contract;
+small, structured output; no shared state with the caller; decision kernel
+isolated from I/O.
+
+A trading-agent verifier deserves the same shape. We adopt it directly:
+
+\begin{itemize}[leftmargin=1.5em, itemsep=2pt, topsep=2pt]
+\item \textbf{Small fixed contract.} A \texttt{TradeProposal}, an
+      \texttt{AccountConstraints}, a \texttt{Portfolio}. Every field is a
+      simple value. No callbacks, no futures, no handles.
+\item \textbf{Small structured output.} A \texttt{Certificate} of three
+      per-gate verdicts (\textsc{approve} / \textsc{resize} /
+      \textsc{reject}) plus reason codes and attached assumptions. No
+      exceptions.
+\item \textbf{No shared state.} Veritas is a pure function: no session,
+      no token, no subscription.
+\item \textbf{Isolated kernel.} Gate logic lives in a Lean~4 kernel
+      compiled to a native binary. The Python adapters that speak HTTP,
+      MCP, and SQLite contain no gate decisions.
+\end{itemize}
+
+A verifier with this shape composes well with existing agents. A caller
+can adopt it by adding one call per proposal, with no architectural
+change. The verifier does not require access to the caller's alpha, model
+weights, or prompts; it only needs the output of the decision the caller
+is about to make.
+
+% ── 3. The three gates ──────────────────────────────────────────
+\section{The Three Gates}
+\label{sec:gates}
+
+We decompose the approval obligation into three orthogonal questions.
+Each is a gate returning one of \textsc{approve}, \textsc{resize}, or
+\textsc{reject}.
+
+\subsection{Gate~1 --- Signal Consistency}
+Given the proposed trade and the market context the caller claims to be
+acting under, does the proposal cohere? In particular: does the direction
+match what a declared policy would emit here, and does the proposal carry
+well-formed, non-empty assumptions? Gate~1 forces the caller to be
+explicit about what it is betting on. On approval, Gate~1 attaches the
+assumptions Veritas's policy associates with the signal, so downstream
+auditors see \emph{what was bet on}.
+
+\subsection{Gate~2 --- Strategy-Constraint Compatibility}
+Given the caller's account envelope (equity, reliability of the attached
+assumption, sample size, leverage cap, stop-loss), is the requested
+notional inside the ceiling? Gate~2 returns the ceiling when the caller
+is over it (\textsc{resize}), rather than silently approving at the larger
+number. Gate~2 rejects when no non-zero size is admissible --- below the
+reliability threshold, or with non-positive leverage. This is the gate
+whose formal content is strongest in v0.1.
+
+\subsection{Gate~3 --- Portfolio Interference}
+Given the caller's existing positions and the (possibly resized)
+proposal, does the combined exposure violate portfolio-wide constraints?
+v0.1 catches opposite-direction conflicts and enforces a gross-notional
+cap; v0.2 will handle multi-asset correlation once a second policy is
+active.
+
+\medskip
+
+\noindent The gates execute in order. Gate~2 sees the original proposal;
+Gate~3 sees the Gate~2 output. If any gate rejects, downstream gates
+receive an \texttt{upstream\_gate\_rejected} marker and the final
+notional is zero.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+Gate & Question & Output \\
+\midrule
+1. Signal consistency
+  & Direction agrees with policy?
+  & \textsc{approve} / \textsc{reject} \\
+2. Constraint compatibility
+  & Size fits the reliability-adjusted ceiling?
+  & \textsc{approve} / \textsc{resize} / \textsc{reject} \\
+3. Portfolio interference
+  & Clashes with existing positions? Breaches cap?
+  & \textsc{approve} / \textsc{resize} / \textsc{reject} \\
+\bottomrule
+\end{tabular}
+\caption{The three gates.}
+\label{tab:gates}
+\end{table}
+
+% ── 4. Lean-backed kernel ───────────────────────────────────────
+\section{Lean-Backed Kernel}
+\label{sec:lean}
+
+The design leans on Lean~4 for the kernel. Two properties matter.
+
+\paragraph{Compile-checked API surface.} Veritas encodes properties the
+type system would otherwise leave as conventions. Exit reasons are a sum
+type with three constructors (\texttt{AssumptionMet},
+\texttt{AssumptionBroke}, \texttt{StopLoss}); \texttt{ReliabilityStats}
+carries \texttt{wins} $\leq$ \texttt{total} at the type level, so the
+constructor cannot be called with inconsistent counts; \texttt{Verdict}
+has three tags, each carrying the data needed for that tag and nothing
+more.
+
+\paragraph{Theorem-backed numeric behavior.}
+\texttt{Finance.PositionSizing} ships five theorems (non-negativity,
+25\%-cap, zero-at-no-edge, monotone-in-reliability, exploration-cap-at-1\%).
+\texttt{Strategy.ExitLogic} ships \texttt{exitReason\_exhaustive}.
+\texttt{Learning.Reliability} ships bounded-in-$[0,1]$ and
+monotone-on-wins. These eliminate categories of silent miscount; a
+reviewer has a small set of facts about which to argue.
+
+\paragraph{Cost.} Lean~4's \texttt{Float} is an opaque FFI type with no
+algebraic library. Theorems depend on 20 axioms~\cite{floatax} capturing
+IEEE~754 ordering and arithmetic. Thirteen are exact; seven are
+rounding-dependent within the numeric ranges Veritas uses. Reducing the
+rounding-dependent axioms --- ideally to zero by migrating policy
+arithmetic to exact types (\texttt{Rat} or Mathlib's \texttt{Real}
+\cite{mathlib}) --- is the chief v0.2 technical goal. The axiom set is
+disclosed up front; hiding it would be a trust regression.
+
+% ── 5. Formal guarantees ────────────────────────────────────────
+\section{Gate-Layer Soundness Theorems}
+\label{sec:formal}
+
+Each gate file exports a soundness theorem stating what an \textsc{approve}
+(or \textsc{resize}) verdict from that gate \emph{means}, independent of
+the underlying strategy and finance modules. The theorems, all closed
+under the 20 Float axioms, are summarized in Table~\ref{tab:thms}.
+
+\begin{table}[h]
+\small
+\begin{tabular}{@{}ll@{}}
+\toprule
+Theorem & Statement (informal) \\
+\midrule
+\texttt{verifySignal\_approve\_implies\_consistent}
+  & Gate~1 \textsc{approve} $\Rightarrow$ proposal is signal-consistent. \\
+\texttt{checkConstraints\_approve\_within\_ceiling}
+  & Gate~2 \textsc{approve} $\Rightarrow$ $p.\texttt{notional} \leq \texttt{ceiling}$. \\
+\texttt{checkConstraints\_resize\_respects\_ceiling}
+  & Gate~2 \textsc{resize}~$n$ $\Rightarrow$ $n \leq \texttt{ceiling}$. \\
+\texttt{checkPortfolio\_approve\_respects\_cap}
+  & Gate~3 \textsc{approve} $\Rightarrow$ gross notional under cap. \\
+\texttt{certificate\_soundness}
+  & \texttt{approves} $= \text{true}$ $\Rightarrow$ Gate~1 consistent $\wedge$ Gate~2/3 non-reject. \\
+\bottomrule
+\end{tabular}
+\caption{Gate-layer soundness theorems in \texttt{Veritas/Gates/}.}
+\label{tab:thms}
+\end{table}
+
+As an example, Gate~2's ceiling theorem states:
+\begin{theorem}[\texttt{checkConstraints\_approve\_within\_ceiling}]
+\label{thm:gate2}
+For every proposal $p$ and account constraints $c$, if
+$\texttt{checkConstraints}(p, c) = \textsc{approve}$, then
+\[
+  p.\texttt{notionalUsd} \;\leq\;
+  \texttt{calculatePositionSize}(c.\texttt{equity},\, c.\texttt{reliability},\, c.\texttt{sampleSize}).
+\]
+\end{theorem}
+\noindent The right-hand side is in turn bounded by the five
+\texttt{positionSize\_*} theorems: non-negative, $\leq 0.25 \cdot
+c.\texttt{equity}$, zero when reliability $\leq 0.5$ post-exploration,
+monotone in reliability, fixed at $0.01 \cdot c.\texttt{equity}$ during
+the first ten samples.
+
+The combined soundness theorem connects the chain:
+\begin{theorem}[\texttt{certificate\_soundness}]
+For every $p, c, \text{port}$, if
+$\texttt{emitCertificate}(p, c, \text{port}).\texttt{approves} = \text{true}$
+then:
+\begin{enumerate}[leftmargin=2em, itemsep=1pt, topsep=2pt]
+\item $\texttt{signalConsistent}(p)$ holds;
+\item the certificate's \texttt{gate2} verdict is not a \textsc{reject};
+\item the certificate's \texttt{gate3} verdict is not a \textsc{reject}.
+\end{enumerate}
+\end{theorem}
+\noindent Numeric bounds for Gates~2 and 3 follow by instantiating the
+per-gate theorems on the certificate's actual verdicts. The proof of
+\texttt{certificate\_soundness} proceeds by case analysis on the
+\texttt{verifySignal} output and the intermediate \texttt{g2} verdict;
+the unreachable \textsc{resize} case for Gate~1 is discharged by
+exhaustive case analysis on the body of \texttt{verifySignal}, which
+produces only \textsc{approve} or \textsc{reject}.
+
+\paragraph{Python cannot bypass the kernel.} The Python layer is
+constrained by three CI-enforced invariants:
+\begin{enumerate}[leftmargin=2em, itemsep=1pt, topsep=2pt]
+\item No Python file branches on Veritas decision types
+      (\texttt{Signal}, \texttt{ExitDecision}, \texttt{PositionSize}).
+\item No Python file constructs \texttt{Verdict} values outside
+      \texttt{python/schemas.py} (the dataclass) or
+      \texttt{python/verifier.py} (deserialization from the kernel).
+\item No Python file invokes \texttt{veritas-core} via
+      \texttt{subprocess} outside \texttt{python/bridge.py}.
+\end{enumerate}
+These are checked by \texttt{tests/test\_bypass\_invariant.py} and
+\texttt{tests/test\_loop.py}.
+
+% ── 6. Claim discipline ─────────────────────────────────────────
+\section{Claim Discipline}
+\label{sec:claims}
+
+We want to be explicit about the scope of what Veritas publishes.
+
+\paragraph{What Veritas verifies.} That the approved notional returned by
+the Lean kernel satisfies the theorems of Section~\ref{sec:formal}. That
+every exit classified by \texttt{Strategy.ExitLogic} is one of three
+exhaustive reasons. That reliability updates stay in $[0,1]$ and are
+monotone on wins. That each gate in \texttt{Veritas/Gates/} executes the
+pure function its specification describes.
+
+\paragraph{What Veritas does not verify.}
+\begin{itemize}[leftmargin=1.5em, itemsep=1pt, topsep=2pt]
+\item The correctness of the caller's alpha. An adversarial proposal with
+      a fabricated funding rate is checked against policy but not against
+      a ground-truth data feed.
+\item The correctness of the bundled funding-reversion policy. Veritas
+      verifies that the policy is applied consistently; it does not
+      claim the policy is profitable.
+\item Anything about a specific execution venue. After the certificate
+      is issued, what the caller does is the caller's problem.
+\item Float-level numerical edge cases outside Veritas's numeric ranges
+      (probabilities in $[0,1]$, Kelly fractions, small \texttt{Nat}
+      counts).
+\item Correctness of the Python transport. An adapter bug could fail to
+      deliver a certificate; no theorem prevents that. Callers are
+      expected to treat missing certificates as rejections.
+\end{itemize}
+
+% ── 7. Related work ─────────────────────────────────────────────
+\section{Related Work}
+\label{sec:related}
+
+Institutional trading desks routinely run pre-trade risk checks; the
+novelty here is not the category, it is the combination of (i)~an
+agent-native contract, (ii)~a Lean-backed kernel, and (iii)~public,
+legible certificates with machine-readable reason codes.
+
+Formal-methods work in finance has historically concentrated on
+smart-contract verification. Tools such as Certora~\cite{certora} and
+the Move Prover~\cite{moveprover} formalize on-chain logic. Veritas
+formalizes \emph{off-chain policy} --- the step that decides whether an
+order should be sent at all --- and leaves the on-chain side to existing
+tools. Mathlib~\cite{mathlib} provides the broader formal mathematics
+library on which future versions of Veritas are expected to build when
+migrating to exact arithmetic.
+
+Agent-evaluation work --- benchmarks such as
+AgentBench~\cite{agentbench}, the Inspect framework for red-teaming
+agents, and domain-specific suites for trading agents --- focuses on
+pre-deployment screening. Veritas is orthogonal: it is a run-time gate,
+not a pre-deployment evaluation.
+
+The Model Context Protocol~\cite{mcp} provides a uniform way for agents
+to call tools; Veritas ships an MCP tool
+(\texttt{verify\_proposal}) alongside the HTTP and Python surfaces.
+
+% ── 8. Implementation ───────────────────────────────────────────
+\section{Implementation}
+\label{sec:impl}
+
+\paragraph{v0.1 deliverables.} The \texttt{Verifier} Python surface, the
+\texttt{POST /verify/*} HTTP endpoints, the MCP \texttt{verify\_proposal}
+tool, and the \texttt{veritas-core} CLI all produce the same certificate
+for the same input, enforced by 86 passing tests with no mocks on the
+kernel. \texttt{lake build} produces the compiled kernel binary with
+zero \texttt{sorry}. The 20 Float axioms are classified (13 exact, 7
+rounding-dependent) in \texttt{Veritas/Finance/FloatAxioms.lean}.
+
+\paragraph{Example runner.} The repository ships a funding-reversion
+trading agent that calls Veritas on every tick. It is a demonstration of
+a caller, not the product. Its Hyperliquid adapters
+(\texttt{HyperliquidObserver}, \texttt{HyperliquidExecutor}) are
+reference integrations; exercising them against live testnet traffic is
+not a v0.1 ship requirement. The verifier's correctness against fixture
+proposals is.
+
+\paragraph{Interactive playground.} A browser-visible playground at
+\texttt{/} renders the three-gate verdicts visually and fires the
+\texttt{POST /verify/proposal} round-trip on six preset scenarios
+(clean approve, direction conflict, no signal under policy, oversize
+$\rightarrow$ resize, no edge, portfolio conflict). It exists for
+human evaluators; agents bypass it and use the HTTP contract directly.
+
+% ── 9. Roadmap ──────────────────────────────────────────────────
+\section{Roadmap}
+\label{sec:roadmap}
+
+The v0.1 product has one bundled policy and a single-asset Gate~3.
+Activations beyond v0.1 are:
+
+\begin{description}[leftmargin=2em, itemsep=2pt, topsep=2pt]
+\item[v0.2.] A second policy (basis, liquidation-cascade reversal, or
+  cross-exchange perp--perp basis; candidates under evaluation). Gate~1
+  dispatches over a policy registry; Gate~3 gains multi-asset
+  correlation. Concurrently: migrate numeric decision paths off
+  \texttt{Float} where practical to eliminate rounding-dependent axioms.
+\item[v0.3.] Assumption library exposed as a read-only oracle.
+  Certificates carry a hash of the Lean theorem they rest on, so
+  callers can verify the trust claim without running the kernel
+  themselves.
+\item[v0.4+.] Public registry of policies and theorems; cross-asset
+  policies; first cross-agent integrations.
+\end{description}
+
+Each step adds surface and therefore costs trust. The default is not to
+take the step until the previous step's trust is deployed.
+
+% ── 10. Conclusion ──────────────────────────────────────────────
+\section{Conclusion}
+\label{sec:conclusion}
+
+The question a trading agent should answer before touching capital is
+not \emph{``what do you want to do?''} but \emph{``what do you want to
+do, under what assumption, inside what envelope, against what you already
+hold, and why?''} Veritas exists because nothing else in the
+agent-native stack asks that question in a way the caller can be forced
+through and the reviewer can audit. We would rather have a small,
+legible gate than a large, opaque trader. The v0.1 product is the
+smallest such gate we could ship while keeping all three questions on
+the critical path.
+
+% ── References ───────────────────────────────────────────────────
+\begin{thebibliography}{9}
+
+\bibitem{lean4}
+Leonardo de Moura and Sebastian Ullrich.
+\emph{The Lean 4 Theorem Prover and Programming Language}.
+Proceedings of CADE 28, 2021.
+
+\bibitem{mathlib}
+The Mathlib Community.
+\emph{The Lean Mathematical Library}.
+Proceedings of CPP 2020, ACM, 2020.
+
+\bibitem{mcp}
+Anthropic.
+\emph{Model Context Protocol Specification}, 2024.
+\url{https://modelcontextprotocol.io}
+
+\bibitem{floatax}
+The Veritas Project.
+\emph{Float Axioms: IEEE~754 properties formalized for the
+Veritas numeric range}, v0.1, April 2026.
+See \texttt{Veritas/Finance/FloatAxioms.lean}.
+
+\bibitem{certora}
+Certora.
+\emph{The Certora Prover: formal verification for smart contracts}.
+\url{https://www.certora.com}
+
+\bibitem{moveprover}
+David Dill, Wolfgang Grieskamp, Junkil Park, Shaz Qadeer, Meng Xu, Emma Zhong.
+\emph{Fast and Reliable Formal Verification of Smart Contracts with the Move Prover}.
+TACAS 2022.
+
+\bibitem{agentbench}
+Xiao Liu, Hao Yu, Hanchen Zhang, Yifan Xu, Xuanyu Lei, Hanyu Lai, Yu Gu,
+Hangliang Ding, Kaiwen Men, Kejuan Yang, Shudan Zhang, Xiang Deng, Aohan Zeng,
+Zhengxiao Du, Chenhui Zhang, Sheng Shen, Tianjun Zhang, Yu Su, Huan Sun,
+Minlie Huang, Yuxiao Dong, Jie Tang.
+\emph{AgentBench: Evaluating LLMs as Agents}.
+ICLR 2024.
+
+\end{thebibliography}
+
+\end{document}
