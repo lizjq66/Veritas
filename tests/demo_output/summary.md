@@ -38,6 +38,7 @@ than just runner outcomes.
 | Assumption | Wins | Total | Empirical reliability |
 |------------|------|-------|-----------------------|
 | `funding_rate_reverts_within_8h` | 24 | 24 | 100% |
+| `basis_reverts_within_24h` | 0 | 0 | 50% |
 
 ## Post-approval outcomes (assumption classification)
 
@@ -68,7 +69,7 @@ Wins over totals after each approved proposal closed out.
 
 | Check | Value |
 |-------|-------|
-| journal.db MD5 (session rows only) | `190eafee4a3e65a64ccd8a8ad34bee50` |
+| journal.db MD5 (session rows only) | `154b079ec896f88352c2fde537f02443` |
 | Byte-identical across runs | yes (verified by `test_full_loop_deterministic`) |
 
 ---

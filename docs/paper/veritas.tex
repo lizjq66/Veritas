@@ -307,6 +307,20 @@ Theorem & Statement (informal) \\
 \label{tab:thms}
 \end{table}
 
+When Gate~1 approves a proposal against a multi-policy registry it
+attaches the union of assumptions from every firing strategy. Gate~2,
+in contrast, consumes a scalar \texttt{(reliability, sampleSize)}
+pair. The learning layer bridges the two with an
+\texttt{aggregateReliability} function that takes the element-wise
+minimum across its inputs. Three supporting theorems pin down the
+function's shape: \texttt{aggregateReliability\_empty} (empty list
+returns the no-data default \texttt{(0.5, 0)}),
+\texttt{aggregateReliability\_singleton} (single-element lists are
+pass-through), and \texttt{aggregateReliability\_sampleSize\_le\_head}
+(the aggregate sample size never exceeds any input's total, so a
+single under-sampled assumption is enough to push Gate~2 into
+exploration-phase sizing).
+
 As an example, Gate~2's ceiling theorem states:
 \begin{theorem}[\texttt{checkConstraints\_approve\_within\_ceiling}]
 \label{thm:gate2}

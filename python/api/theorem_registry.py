@@ -99,6 +99,36 @@ THEOREMS: dict[str, dict] = {
         "axioms_used": ["Float.div_nonneg", "Float.div_le_one",
                         "Float.Nat_toFloat_nonneg", "Float.Nat_toFloat_pos"],
     },
+    # ── v0.2 Slice 4: multi-assumption reliability aggregation ─────
+    "aggregateReliability_empty": {
+        "gate": "learning",
+        "file": "Veritas/Learning/Reliability.lean",
+        "status": "proven",
+        "statement_natural_language":
+            "Aggregating no assumption stats yields the default "
+            "(reliability = 0.5, sample_size = 0) pair.",
+        "axioms_used": [],
+    },
+    "aggregateReliability_singleton": {
+        "gate": "learning",
+        "file": "Veritas/Learning/Reliability.lean",
+        "status": "proven",
+        "statement_natural_language":
+            "Aggregating a single-element list returns that element's "
+            "own reliability score and total. Aggregation is "
+            "idempotent for callers with exactly one assumption.",
+        "axioms_used": [],
+    },
+    "aggregateReliability_sampleSize_le_head": {
+        "gate": "learning",
+        "file": "Veritas/Learning/Reliability.lean",
+        "status": "proven",
+        "statement_natural_language":
+            "The aggregate sample size never exceeds any input's "
+            "total. Consequently, one under-sampled assumption forces "
+            "the whole proposal into Gate 2's exploration phase.",
+        "axioms_used": [],
+    },
     # ── Gate-layer soundness contracts ─────────────────────────────
     # These are first-class theorems living in Veritas/Gates/*.lean.
     # They document what each gate's Approve/Resize verdict *means*,

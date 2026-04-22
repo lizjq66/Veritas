@@ -196,6 +196,44 @@ private def handleMonitor (args : List String) : IO UInt32 := do
     IO.eprintln "usage: veritas-core monitor <fr> <price> <ts> <oi> <dir> <ep> <sz> <lev> <sl> <ets> <aname>"
     return 1
 
+/-- Parse a flat list of strings as reliability stats pairs
+    `(wins, total)`. Returns `none` on unpaired input. -/
+private partial def parseReliabilityPairs
+    : List String → Option (List Learning.ReliabilityStats)
+  | []              => some []
+  | _ :: []         => none
+  | w :: t :: rest  =>
+    match Learning.ReliabilityStats.mk? w.toNat! t.toNat! with
+    | none        => none
+    | some stats  =>
+      match parseReliabilityPairs rest with
+      | some tail => some (stats :: tail)
+      | none      => none
+
+/-- v0.2 Slice 4 — aggregate a list of per-assumption reliability
+    records into the (reliability, sample_size) pair Gate 2 consumes.
+
+    Usage:
+      aggregate-reliability <n_pairs> <wins_1> <total_1> <wins_2> <total_2> ...
+
+    Empty input (`n_pairs = 0`) yields the default `(0.5, 0)` pair. -/
+private def handleAggregateReliability (args : List String) : IO UInt32 := do
+  match args with
+  | _nStr :: pairs =>
+    match parseReliabilityPairs pairs with
+    | none =>
+      IO.eprintln "usage: veritas-core aggregate-reliability <n_pairs> <wins_1> <total_1> ..."
+      return 1
+    | some statsList =>
+      let (rel, sz) := Learning.aggregateReliability statsList
+      IO.println (jsonObj [
+        jsonNum "reliability" rel,
+        jsonNat "sample_size" sz])
+      return 0
+  | [] =>
+    IO.eprintln "usage: veritas-core aggregate-reliability <n_pairs> <wins_1> <total_1> ..."
+    return 1
+
 private def handleUpdateReliability (args : List String) : IO UInt32 := do
   match args with
   | [winsS, totalS, reasonS] =>
@@ -600,7 +638,8 @@ def main (args : List String) : IO UInt32 := do
     | "extract-basis"       => handleExtractBasis rest
     | "size"                => handleSize rest
     | "monitor"             => handleMonitor rest
-    | "update-reliability"  => handleUpdateReliability rest
+    | "update-reliability"   => handleUpdateReliability rest
+    | "aggregate-reliability" => handleAggregateReliability rest
     | "classify-regime"     => handleClassifyRegime rest
     | "build-context"       => handleBuildContext rest
     | "judge-signal"        => handleJudgeSignal rest

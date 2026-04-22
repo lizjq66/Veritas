@@ -86,10 +86,13 @@ def test_assumptions_list():
     r = client.get("/assumptions")
     assert r.status_code == 200
     d = r.json()
-    assert len(d["assumptions"]) == 1
-    a = d["assumptions"][0]
-    assert a["name"] == "funding_rate_reverts_within_8h"
-    assert a["reliability"] == 0.5  # no trades yet
+    # v0.2 seeds both funding and basis reversion assumptions.
+    names = {a["name"] for a in d["assumptions"]}
+    assert "funding_rate_reverts_within_8h" in names
+    assert "basis_reverts_within_24h" in names
+    # both start at default 0.5 reliability (no trades yet)
+    for a in d["assumptions"]:
+        assert a["reliability"] == 0.5
 
 
 def test_assumptions_detail():

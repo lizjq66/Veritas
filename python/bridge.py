@@ -231,6 +231,17 @@ class VeritasCore:
             exit_reason,
         ])
 
+    def aggregate_reliability(
+        self, stats_list: "list[dict] | tuple[dict, ...]"
+    ) -> dict:
+        """v0.2 Slice 4 — combine a list of ``{wins, total}`` records
+        into the conservative ``(reliability, sample_size)`` pair
+        Gate 2 consumes (min across the inputs)."""
+        args = [str(len(stats_list))]
+        for s in stats_list:
+            args += [str(int(s["wins"])), str(int(s["total"]))]
+        return self._call("aggregate-reliability", args)
+
     def build_context(self, snapshot: dict) -> dict:
         """Enrich a raw snapshot with regime / price-change fields."""
         return self._call("build-context", [

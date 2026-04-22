@@ -19,7 +19,15 @@ ASSUMPTIONS_SEED = [
             "When |funding_rate| > 0.05%/hr on Hyperliquid BTC perp, "
             "it returns to |funding_rate| < 0.01%/hr within 8 hours."
         ),
-    }
+    },
+    {
+        "name": "basis_reverts_within_24h",
+        "description": (
+            "When the BTC perp--spot basis exceeds ±0.20% on Hyperliquid "
+            "vs the reference spot venue, it returns to within ±0.05% "
+            "of zero inside 24 hours."
+        ),
+    },
 ]
 
 _conn: sqlite3.Connection | None = None
@@ -96,6 +104,21 @@ def get_assumption_stats(name: str) -> dict | None:
     if row is None:
         return None
     return {"wins": row["wins"], "total": row["total"]}
+
+
+def get_assumption_stats_many(names: "list[str] | tuple[str, ...]") -> dict:
+    """Batch version for v0.2 multi-assumption Gate 1 output.
+    Returns ``{name: {wins, total}}`` with missing rows defaulted to
+    ``{wins: 0, total: 0}`` so a brand-new assumption does not break
+    aggregate_reliability callers."""
+    conn = _get_conn()
+    placeholders = ",".join("?" for _ in names)
+    rows = conn.execute(
+        f"SELECT name, wins, total FROM assumptions WHERE name IN ({placeholders})",
+        tuple(names),
+    ).fetchall() if names else []
+    by_name = {r["name"]: {"wins": r["wins"], "total": r["total"]} for r in rows}
+    return {n: by_name.get(n, {"wins": 0, "total": 0}) for n in names}
 
 
 def update_assumption_stats(name: str, new_stats: dict) -> None:

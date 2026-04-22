@@ -145,8 +145,9 @@ def test_get_state_populated(populated_db):
 
 def test_list_assumptions():
     d = _handle_list_assumptions()
-    assert len(d["assumptions"]) == 1
-    assert d["assumptions"][0]["name"] == "funding_rate_reverts_within_8h"
+    names = {a["name"] for a in d["assumptions"]}
+    assert "funding_rate_reverts_within_8h" in names
+    assert "basis_reverts_within_24h" in names
 
 
 # ── get_assumption ───────────────────────────────────────────────
