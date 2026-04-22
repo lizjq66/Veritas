@@ -5,20 +5,22 @@
   decide whether adding the trade would violate portfolio-level
   constraints.
 
-  v0.1 scope is deliberately narrow:
+  v0.2 upgrade: exposure is now measured with a correlation weighting
+  across assets. An existing BTC-LONG position and an incoming
+  ETH-LONG proposal do not contribute $1 : $1 to the cap check; they
+  contribute in proportion to the BTC--ETH correlation supplied in
+  the portfolio. Same-asset positions default to correlation 1.0
+  (preserving v0.1 behavior); unknown cross-asset pairs default to 0.
 
-    - CONFLICT: a new position in the opposite direction of any existing
-      position is a policy-level conflict (v0.1 runs one asset at a time,
-      so any existing position is implicitly on the same asset).
-    - CONCENTRATION: gross notional across all positions (including the
-      new one) must not exceed `maxGrossExposureFraction` × equity. If
-      the new trade would breach this, Gate 3 resizes to the remaining
-      headroom.
-    - CORRELATION: v0.1 treats all positions as fully correlated. True
-      multi-asset correlation is a v0.2 concern.
+  Three reject paths and one resize path:
 
-  Gate 3 only returns APPROVE / RESIZE / REJECT with explicit reason
-  codes. It never silently adjusts a trade.
+    - direction_conflicts_existing_position  — a position on the
+      same asset carries the opposite direction
+    - gross_exposure_cap_non_positive        — cap is ≤ 0
+    - portfolio_already_at_correlation_weighted_cap
+        — the correlation-adjusted exposure already exceeds the cap
+    - Resize headroom                        — the proposal would
+      breach the cap; resize down to whatever headroom remains
 -/
 import Veritas.Gates.Types
 
@@ -26,45 +28,79 @@ namespace Veritas.Gates
 
 open Veritas
 
-/-- Sum of absolute-value notionals across existing positions, in USD. -/
-def grossNotional (positions : List Position) : Float :=
-  positions.foldl (fun acc p => acc + Float.abs (p.entryPrice * p.size)) 0.0
+/-- Absolute |correlation| between two assets under a portfolio's
+    correlation table. Same-asset pairs resolve to 1.0 even with no
+    explicit entry (so v0.1 single-asset callers are unaffected).
+    Unknown cross-asset pairs resolve to 0.0 (new positions on
+    unknown assets are treated as orthogonal for v0.2). -/
+def correlationBetween
+    (table : List CorrelationEntry) (a b : String) : Float :=
+  if a == b then 1.0
+  else
+    match table.find?
+      (fun e => (e.assetA == a && e.assetB == b)
+              ∨ (e.assetA == b && e.assetB == a)) with
+    | some e => Float.abs e.coefficient
+    | none   => 0.0
 
-/-- Does the proposal direction conflict with any existing position? -/
-def hasDirectionConflict (positions : List Position) (p : TradeProposal) : Bool :=
-  positions.any (fun pos => pos.direction != p.direction)
+/-- Sum of each existing position's absolute notional weighted by
+    |correlation| with the proposed asset. This is the v0.2 measure
+    of "how much of the portfolio overlaps with the new proposal's
+    risk factor". -/
+def correlationAdjustedExposure
+    (port : Portfolio) (p : TradeProposal) : Float :=
+  port.positions.foldl
+    (fun acc pos =>
+      acc +
+      Float.abs (pos.entryPrice * pos.size) *
+        correlationBetween port.correlations pos.asset p.asset)
+    0.0
 
-/-- Gate 3: check portfolio interference. -/
-def checkPortfolio (p : TradeProposal) (port : Portfolio) (equity : Float) : Verdict :=
+/-- Does any existing position on the same asset carry the opposite
+    direction? Cross-asset opposite directions are NOT a conflict —
+    they may even be a hedge. -/
+def hasDirectionConflict
+    (positions : List Position) (p : TradeProposal) : Bool :=
+  positions.any
+    (fun pos => pos.asset == p.asset && pos.direction != p.direction)
+
+/-- Gate 3: check portfolio interference under correlation weighting. -/
+def checkPortfolio
+    (p : TradeProposal) (port : Portfolio) (equity : Float) : Verdict :=
   if hasDirectionConflict port.positions p then
     .Reject ["direction_conflicts_existing_position"]
   else
-    let existingGross := grossNotional port.positions
+    let adjusted := correlationAdjustedExposure port p
     let cap := equity * port.maxGrossExposureFraction
     let proposed := Float.abs p.notionalUsd
-    let total := existingGross + proposed
+    let total := adjusted + proposed
     if cap <= 0.0 then
       .Reject ["gross_exposure_cap_non_positive"]
     else if total <= cap then
       .Approve
     else
-      let headroom := cap - existingGross
+      let headroom := cap - adjusted
       if headroom <= 0.0 then
-        .Reject ["portfolio_already_at_gross_exposure_cap"]
+        .Reject ["portfolio_already_at_correlation_weighted_cap"]
       else
         .Resize headroom
 
 -- ── Soundness contract ────────────────────────────────────────────
 
 /-- Gate 3 soundness (approve path): if `checkPortfolio` approves the
-    proposal, the proposal's absolute notional added to existing gross
-    notional stays within the portfolio's gross-exposure cap.
+    proposal, the proposal's absolute notional added to the existing
+    correlation-adjusted exposure stays within the portfolio's cap.
 
-    This lifts the portfolio cap into the gate's public contract. -/
+    In v0.2 the "exposure" measure is `correlationAdjustedExposure`
+    rather than raw gross notional: same-asset positions count fully,
+    cross-asset positions count proportional to their correlation
+    coefficient with the proposal's asset, unknown cross-asset pairs
+    count as zero. Both endpoints (same-asset 1.0, different-asset 0.0
+    default) match what v0.1 checked for its single-asset case. -/
 theorem checkPortfolio_approve_respects_cap
     (p : TradeProposal) (port : Portfolio) (equity : Float)
     (h : checkPortfolio p port equity = .Approve) :
-    grossNotional port.positions + Float.abs p.notionalUsd
+    correlationAdjustedExposure port p + Float.abs p.notionalUsd
       ≤ equity * port.maxGrossExposureFraction := by
   -- Rewrite `h` past the internal let-bindings so `split at` can
   -- descend into the if-chain.
@@ -73,13 +109,15 @@ theorem checkPortfolio_approve_respects_cap
         Verdict.Reject ["direction_conflicts_existing_position"]
        else if equity * port.maxGrossExposureFraction ≤ 0.0 then
         Verdict.Reject ["gross_exposure_cap_non_positive"]
-       else if grossNotional port.positions + Float.abs p.notionalUsd
+       else if correlationAdjustedExposure port p + Float.abs p.notionalUsd
               ≤ equity * port.maxGrossExposureFraction then
         Verdict.Approve
-       else if equity * port.maxGrossExposureFraction - grossNotional port.positions ≤ 0.0 then
-        Verdict.Reject ["portfolio_already_at_gross_exposure_cap"]
+       else if equity * port.maxGrossExposureFraction
+               - correlationAdjustedExposure port p ≤ 0.0 then
+        Verdict.Reject ["portfolio_already_at_correlation_weighted_cap"]
        else
-        Verdict.Resize (equity * port.maxGrossExposureFraction - grossNotional port.positions))
+        Verdict.Resize (equity * port.maxGrossExposureFraction
+                         - correlationAdjustedExposure port p))
         = .Approve := h
   split at h'
   · cases h'

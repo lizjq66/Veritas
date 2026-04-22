@@ -46,6 +46,7 @@ class ProposalIn(BaseModel):
     timestamp: int = 0
     open_interest: float = 0.0
     spot_price: float = 0.0
+    asset: str = ""
 
 
 class ConstraintsIn(BaseModel):
@@ -61,11 +62,19 @@ class PositionIn(BaseModel):
     direction: Literal["LONG", "SHORT"]
     entry_price: float = Field(gt=0)
     size: float = Field(gt=0)
+    asset: str = ""
+
+
+class CorrelationIn(BaseModel):
+    asset_a: str
+    asset_b: str
+    coefficient: float
 
 
 class PortfolioIn(BaseModel):
     positions: list[PositionIn] = Field(default_factory=list)
     max_gross_exposure_fraction: float = 0.50
+    correlations: list[CorrelationIn] = Field(default_factory=list)
 
 
 class VerifyRequest(BaseModel):
@@ -85,6 +94,7 @@ def _to_proposal(p: ProposalIn) -> TradeProposal:
         timestamp=p.timestamp,
         open_interest=p.open_interest,
         spot_price=p.spot_price,
+        asset=p.asset,
     )
 
 
@@ -102,14 +112,21 @@ def _to_constraints(c: ConstraintsIn) -> AccountConstraints:
 def _to_portfolio(p: PortfolioIn | None) -> Portfolio:
     if p is None:
         return Portfolio()
+    from python.schemas import CorrelationEntry
     return Portfolio(
         positions=tuple(
             PortfolioPosition(direction=pos.direction,
                               entry_price=pos.entry_price,
-                              size=pos.size)
+                              size=pos.size,
+                              asset=pos.asset)
             for pos in p.positions
         ),
         max_gross_exposure_fraction=p.max_gross_exposure_fraction,
+        correlations=tuple(
+            CorrelationEntry(asset_a=c.asset_a, asset_b=c.asset_b,
+                             coefficient=c.coefficient)
+            for c in p.correlations
+        ),
     )
 
 

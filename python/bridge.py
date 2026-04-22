@@ -95,12 +95,13 @@ class VeritasCore:
         portfolio: "Portfolio",
         equity: float,
     ) -> dict:
-        """Gate 3: portfolio interference."""
+        """Gate 3: portfolio interference (v0.2 — correlation-aware)."""
         base = [
             proposal.direction,
             str(proposal.notional_usd),
             str(equity),
             str(portfolio.max_gross_exposure_fraction),
+            proposal.asset,
         ]
         if not portfolio.positions:
             args = base + ["none"]
@@ -108,8 +109,12 @@ class VeritasCore:
             pos = portfolio.positions[0]
             args = base + [
                 "one", pos.direction, str(pos.entry_price), str(pos.size),
+                pos.asset,
             ]
-        return self._call("check-portfolio", args)
+        args = args + [str(len(portfolio.correlations))]
+        for c in portfolio.correlations:
+            args += [c.asset_a, c.asset_b, str(c.coefficient)]
+        return self._call("check-portfolio-ex", args)
 
     def emit_certificate(
         self,
@@ -133,6 +138,7 @@ class VeritasCore:
             str(constraints.max_position_fraction),
             str(constraints.stop_loss_pct),
             str(portfolio.max_gross_exposure_fraction),
+            proposal.asset,
         ]
         if not portfolio.positions:
             args = base + ["none"]
@@ -140,8 +146,12 @@ class VeritasCore:
             pos = portfolio.positions[0]
             args = base + [
                 "one", pos.direction, str(pos.entry_price), str(pos.size),
+                pos.asset,
             ]
-        return self._call("emit-certificate", args)
+        args = args + [str(len(portfolio.correlations))]
+        for c in portfolio.correlations:
+            args += [c.asset_a, c.asset_b, str(c.coefficient)]
+        return self._call("emit-certificate-ex", args)
 
     def classify_exit(self, snapshot: dict, position: dict) -> dict:
         """Classify whether an open position should exit, and under which

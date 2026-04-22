@@ -138,9 +138,12 @@ THEOREMS: dict[str, dict] = {
         "file": "Veritas/Gates/PortfolioGate.lean",
         "status": "proven",
         "statement_natural_language":
-            "If Gate 3 approves a proposal, then adding its absolute "
-            "notional to existing gross notional stays within the "
-            "portfolio's gross-exposure cap.",
+            "If Gate 3 approves a proposal, then the proposal's "
+            "absolute notional added to the portfolio's "
+            "correlation-adjusted exposure stays within the cap. "
+            "Correlation weighting: same-asset positions count at 1.0, "
+            "cross-asset positions count proportional to their "
+            "|correlation| coefficient (0.0 when unknown).",
         "axioms_used": [],
     },
     "certificate_soundness": {

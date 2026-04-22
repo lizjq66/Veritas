@@ -22,6 +22,10 @@ structure TradeProposal where
   timestamp : Nat
   openInterest : Float := 0.0
   spotPrice : Float := 0.0
+  /-- Asset symbol. Used by Gate 3 correlation weighting. Default ""
+      means "same bucket as every other default-asset position" —
+      preserves v0.1 single-asset behavior. -/
+  asset : String := ""
   deriving Repr, Inhabited
 
 /-- Account-level constraints a proposal must satisfy.
@@ -42,14 +46,30 @@ structure AccountConstraints where
   sampleSize : Nat
   deriving Repr, Inhabited
 
-/-- A thin portfolio snapshot. v0.1 tracks at most one open position
-    per caller, so `positions : List Position` typically has length 0 or 1.
-    The verifier does not assume positions are on any particular asset. -/
+/-- One entry in the portfolio correlation table. The absolute value
+    of `coefficient` (clamped to [0, 1]) is used by Gate 3: a zero
+    means "these two assets share no risk factor"; a one means "these
+    two assets are a single risk factor". Sign is ignored in v0.2
+    because Gate 3 measures exposure magnitude, not directional
+    hedges; directional correlation lives in v0.3+ work. -/
+structure CorrelationEntry where
+  assetA : String
+  assetB : String
+  coefficient : Float
+  deriving Repr, Inhabited
+
+/-- A portfolio snapshot plus the correlation information Gate 3
+    needs to measure exposure across assets.
+
+    `correlations` defaults to an empty list. In that case Gate 3's
+    correlation function falls back to the single-asset default:
+    same asset → 1.0, different assets → 0.0. -/
 structure Portfolio where
   positions : List Position
-  /-- Maximum total notional exposure allowed across the portfolio,
-      as a fraction of equity. -/
+  /-- Maximum total correlation-weighted exposure allowed across the
+      portfolio, as a fraction of equity. -/
   maxGrossExposureFraction : Float
+  correlations : List CorrelationEntry := []
   deriving Repr, Inhabited
 
 /-- Verdict a gate can return. -/

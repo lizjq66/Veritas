@@ -65,7 +65,11 @@ structure AssumptionWithReliability where
   reliability : Float
   deriving Repr, Inhabited
 
-/-- An open position. -/
+/-- An open position. `asset` identifies the underlying symbol (e.g.
+    "BTC"). v0.1 left this implicit; v0.2 Gate 3 uses it both to
+    restrict direction-conflict checks to same-asset positions and to
+    compute correlation-weighted exposure across assets. Defaults to
+    "" (empty asset) for backward compatibility. -/
 structure Position where
   direction : Direction
   entryPrice : Float
@@ -74,6 +78,7 @@ structure Position where
   stopLossPct : Float
   entryTimestamp : Nat
   assumptionName : String
+  asset : String := ""
   deriving Repr, Inhabited
 
 /-- The result of monitoring: should we exit, and why? -/

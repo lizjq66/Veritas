@@ -38,6 +38,10 @@ class TradeProposal:
     """Concurrent spot price on the reference venue. Required by
     strategies that look at the perp--spot basis; left at 0.0 means
     'spot unknown' and such strategies will not fire."""
+    asset: str = ""
+    """Asset symbol (e.g. "BTC"). Gate 3 uses this for same-asset
+    direction-conflict detection and cross-asset correlation weighting.
+    Default empty string preserves v0.1 single-asset behavior."""
 
 
 @dataclass(frozen=True)
@@ -55,20 +59,37 @@ class AccountConstraints:
 
 @dataclass(frozen=True)
 class PortfolioPosition:
-    """A thin summary of one existing position. v0.1 treats all positions
-    as being on the same asset as the proposal."""
+    """A thin summary of one existing position."""
 
     direction: Direction
     entry_price: float
     size: float
+    asset: str = ""
+    """Asset symbol. Defaults to "" — under Gate 3's correlation
+    rules, "" == "" resolves to correlation 1.0, preserving v0.1
+    single-asset behavior."""
+
+
+@dataclass(frozen=True)
+class CorrelationEntry:
+    """One cell of the portfolio correlation table. Gate 3 uses
+    |coefficient| (clamped to [0, 1]) when weighting existing
+    positions against a new proposal."""
+
+    asset_a: str
+    asset_b: str
+    coefficient: float
 
 
 @dataclass(frozen=True)
 class Portfolio:
-    """Existing positions plus the portfolio-level exposure cap."""
+    """Existing positions plus the portfolio-level exposure cap and
+    (v0.2+) the correlation table Gate 3 uses to measure
+    correlation-weighted exposure across assets."""
 
     positions: tuple[PortfolioPosition, ...] = ()
     max_gross_exposure_fraction: float = 0.50
+    correlations: tuple[CorrelationEntry, ...] = ()
 
 
 @dataclass(frozen=True)

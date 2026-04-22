@@ -200,11 +200,16 @@ whose formal content is strongest in v0.1.
 
 \subsection{Gate~3 --- Portfolio Interference}
 Given the caller's existing positions and the (possibly resized)
-proposal, does the combined exposure violate portfolio-wide constraints?
-The current version catches opposite-direction conflicts and enforces
-a gross-notional cap; richer correlation handling across asset classes
-becomes meaningful once the registry contains strategies over
-heterogeneous assets.
+proposal, does the combined exposure violate portfolio-wide
+constraints? Gate~3 measures exposure with a \emph{correlation
+weighting}: each existing position contributes to the proposal's
+risk bucket in proportion to the absolute value of its correlation
+coefficient with the proposal's asset. Same-asset positions count at
+$1.0$, unknown cross-asset pairs count at $0.0$, and explicit
+entries override both defaults. Direction conflicts are restricted
+to same-asset positions, so an opposite-direction position on an
+uncorrelated asset (a potential hedge) is no longer falsely flagged
+as a conflict.
 
 \medskip
 

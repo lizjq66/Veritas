@@ -123,7 +123,7 @@ when the new proposal conflicts in direction with any existing
 position (`direction_conflicts_existing_position`) and resizes down
 when total gross notional would exceed the configured cap. If the
 portfolio is already at the cap, Gate 3 rejects
-(`portfolio_already_at_gross_exposure_cap`).
+(`portfolio_already_at_correlation_weighted_cap`).
 
 v0.1 treats all positions as fully correlated. True multi-asset
 correlation is a v0.2 concern and will arrive alongside multi-policy

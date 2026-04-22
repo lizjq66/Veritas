@@ -16,6 +16,7 @@ import pytest
 
 from python.schemas import (
     AccountConstraints,
+    CorrelationEntry,
     Portfolio,
     PortfolioPosition,
     TradeProposal,
@@ -228,7 +229,110 @@ def test_gate3_rejects_when_already_at_cap(verifier):
     )
     verdict = verifier.check_portfolio(proposal, portfolio, equity=10000.0)
     assert verdict.tag == "reject"
-    assert "portfolio_already_at_gross_exposure_cap" in verdict.reason_codes
+    assert "portfolio_already_at_correlation_weighted_cap" in verdict.reason_codes
+
+
+# ── Gate 3: correlation-weighted exposure (v0.2 Slice 3) ─────────
+
+def test_gate3_cross_asset_zero_correlation_approves(verifier):
+    """BTC proposal vs ETH existing position with no correlation entry.
+    Cross-asset unknown-correlation defaults to 0 → existing position
+    contributes nothing to the BTC risk bucket → proposal approved."""
+    proposal = TradeProposal(
+        direction="LONG", notional_usd=2000.0,
+        funding_rate=0.0012, price=68000.0, timestamp=0,
+        asset="BTC",
+    )
+    portfolio = Portfolio(
+        positions=(PortfolioPosition(
+            direction="LONG", entry_price=2000.0, size=1.0, asset="ETH"),),
+        max_gross_exposure_fraction=0.50,
+        correlations=(),  # default: cross-asset = 0
+    )
+    verdict = verifier.check_portfolio(proposal, portfolio, equity=10000.0)
+    assert verdict.tag == "approve"
+
+
+def test_gate3_cross_asset_high_correlation_resizes(verifier):
+    """BTC proposal vs ETH existing, with BTC-ETH correlation 0.9.
+    Existing ETH = $2000 * 1 = $2000 notional; weighted by 0.9 → $1800
+    contribution to BTC bucket. Proposal $4000 + $1800 = $5800 > $5000 cap.
+    Headroom = cap($5000) − $1800 = $3200."""
+    proposal = TradeProposal(
+        direction="LONG", notional_usd=4000.0,
+        funding_rate=0.0012, price=68000.0, timestamp=0,
+        asset="BTC",
+    )
+    portfolio = Portfolio(
+        positions=(PortfolioPosition(
+            direction="LONG", entry_price=2000.0, size=1.0, asset="ETH"),),
+        max_gross_exposure_fraction=0.50,
+        correlations=(CorrelationEntry(asset_a="BTC", asset_b="ETH",
+                                        coefficient=0.9),),
+    )
+    verdict = verifier.check_portfolio(proposal, portfolio, equity=10000.0)
+    assert verdict.tag == "resize"
+    assert verdict.new_notional_usd == pytest.approx(3200.0, rel=1e-3)
+
+
+def test_gate3_cross_asset_symmetric_correlation_lookup(verifier):
+    """Correlation table lookup should be symmetric: the entry
+    BTC/ETH also matches an ETH proposal against a BTC position."""
+    proposal = TradeProposal(
+        direction="LONG", notional_usd=4000.0,
+        funding_rate=0.0, price=2000.0, timestamp=0,
+        asset="ETH",
+    )
+    portfolio = Portfolio(
+        positions=(PortfolioPosition(
+            direction="LONG", entry_price=68000.0, size=0.03, asset="BTC"),),
+        max_gross_exposure_fraction=0.50,
+        # Listed as BTC/ETH but must match ETH-proposal vs BTC-position.
+        correlations=(CorrelationEntry(asset_a="BTC", asset_b="ETH",
+                                        coefficient=0.9),),
+    )
+    # existing BTC weighted by 0.9: 68000*0.03*0.9 = $1836
+    # proposal $4000 + $1836 = $5836 > $5000 cap → resize to $5000−$1836 = $3164
+    verdict = verifier.check_portfolio(proposal, portfolio, equity=10000.0)
+    assert verdict.tag == "resize"
+    assert verdict.new_notional_usd == pytest.approx(3164.0, rel=1e-3)
+
+
+def test_gate3_cross_asset_opposite_direction_is_not_conflict(verifier):
+    """Contrast with same-asset: BTC-LONG proposal + ETH-SHORT
+    existing position with zero correlation is NOT flagged as a
+    direction conflict. The old (v0.1) logic would have rejected
+    this because it treated all positions as same-asset."""
+    proposal = TradeProposal(
+        direction="LONG", notional_usd=1000.0,
+        funding_rate=0.0012, price=68000.0, timestamp=0,
+        asset="BTC",
+    )
+    portfolio = Portfolio(
+        positions=(PortfolioPosition(
+            direction="SHORT", entry_price=2000.0, size=0.5, asset="ETH"),),
+        max_gross_exposure_fraction=0.50,
+        correlations=(),
+    )
+    verdict = verifier.check_portfolio(proposal, portfolio, equity=10000.0)
+    assert verdict.tag == "approve"
+
+
+def test_gate3_same_asset_opposite_direction_still_rejected(verifier):
+    """Regression: same-asset opposite-direction conflict detection
+    must still work under the v0.2 asset-aware logic."""
+    proposal = TradeProposal(
+        direction="LONG", notional_usd=1000.0,
+        funding_rate=0.0012, price=68000.0, timestamp=0,
+        asset="BTC",
+    )
+    portfolio = Portfolio(
+        positions=(PortfolioPosition(
+            direction="SHORT", entry_price=68000.0, size=0.03, asset="BTC"),),
+    )
+    verdict = verifier.check_portfolio(proposal, portfolio, equity=10000.0)
+    assert verdict.tag == "reject"
+    assert "direction_conflicts_existing_position" in verdict.reason_codes
 
 
 # ── Combined certificate ─────────────────────────────────────────
