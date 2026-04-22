@@ -152,6 +152,33 @@ async def verify_proposal(req: VerifyRequest) -> dict:
     return cert.to_json()
 
 
+@router.get("/verify/pubkey")
+async def verify_pubkey() -> dict:
+    """Return the Verifier's Ed25519 public key, attested build sha,
+    and schema version. Callers fetch this once (trust-on-first-use)
+    and verify every subsequent Certificate's attestation against
+    the same key."""
+    from python.attestation import CURRENT_SCHEMA_VERSION, VERITAS_VERSION
+
+    v = _get_verifier()
+    pk = v.public_key
+    if pk is None:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "signing_disabled",
+                "message": "this verifier instance is not signing certificates",
+            },
+        )
+    return {
+        "algorithm": "ed25519",
+        "public_key": pk,
+        "build_sha": v.build_sha,
+        "veritas_version": VERITAS_VERSION,
+        "schema_version": CURRENT_SCHEMA_VERSION,
+    }
+
+
 @router.post("/verify/signal")
 async def verify_signal(req: VerifyRequest) -> dict:
     """Run Gate 1 only: signal / assumption consistency."""

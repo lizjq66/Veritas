@@ -49,15 +49,35 @@ command to `veritas-core` and call it from `bridge.py`.
 
 ## Trust boundary
 
-Lean is trusted. Python is untrusted. All safety claims apply to the
-Lean side only. The observation layer (`GET` endpoints, dashboard, MCP
-inspection tools) is physically read-only; the verification layer
-(`POST /verify/*`) is a pure function from request to kernel response.
+Lean is trusted. Python is untrusted *for decisions*. All safety
+claims apply to the Lean side only. The observation layer (`GET`
+endpoints, dashboard, MCP inspection tools) is physically read-only;
+the verification layer (`POST /verify/*`) is a pure function from
+request to kernel response.
 
 **Python must never approve a trade without flowing through the Lean
 gates.** There is no Python-side fallback, no cache, no fast-path. If
 an adapter reimplements a verdict, that is a bug — push the logic to
 Lean and re-expose it via the bridge.
+
+### Python as provenance anchor (v0.3 slice 3+)
+
+Python is additionally trusted as a *provenance* signer: the Ed25519
+key used to sign `Attestation`s lives in the Python process
+(`python/attestation.py`), and each signature asserts "this verdict
+was produced by the `veritas-core` binary whose sha256 is
+`build_sha`". This does not relax the decision-trust boundary — the
+bypass-invariant tests still enforce that Python cannot mint a verdict
+of its own. A malicious Python operator *could* in principle sign a
+verdict that disagrees with what Lean returned; defeating that attack
+requires moving the signer into Lean (or into an audited side-car)
+and is an explicit future direction, not this slice's scope.
+
+The attestation schema is versioned (`schema_version`); each version
+fixes a canonical signed-payload shape forever. Future additions (e.g.
+request-digest binding in slice 4) must bump the version, not modify
+v1. See `python/attestation.py`'s module docstring for the full
+forward-compatibility contract.
 
 ## Invariants enforced by CI
 

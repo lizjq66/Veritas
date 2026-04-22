@@ -20,6 +20,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from python.attestation import Attestation
+
 Direction = Literal["LONG", "SHORT"]
 VerdictTag = Literal["approve", "resize", "reject"]
 
@@ -151,7 +153,12 @@ class Verdict:
 
 @dataclass(frozen=True)
 class Certificate:
-    """The full result of running a proposal through all three gates."""
+    """The full result of running a proposal through all three gates.
+
+    ``attestation`` (v0.3 slice 3+) is a cryptographic binding of this
+    verdict to a specific ``veritas-core`` build and signer. It is
+    optional on the schema to keep old wire formats deserializable,
+    but the live Verifier always populates it."""
 
     gate1: Verdict
     gate2: Verdict
@@ -159,8 +166,14 @@ class Certificate:
     assumptions: tuple[dict, ...]
     final_notional_usd: float
     approves: bool
+    attestation: Attestation | None = None
 
-    def to_json(self) -> dict:
+    def body_json(self) -> dict:
+        """Certificate body EXCLUDING ``attestation``.
+
+        This is the exact dict the attestation's signature covers;
+        a caller re-running verification passes this to
+        ``python.attestation.verify_certificate``."""
         return {
             "gate1": self.gate1.to_json(),
             "gate2": self.gate2.to_json(),
@@ -170,8 +183,16 @@ class Certificate:
             "approves": self.approves,
         }
 
+    def to_json(self) -> dict:
+        out = self.body_json()
+        if self.attestation is not None:
+            out["attestation"] = self.attestation.to_json()
+        return out
+
     @classmethod
     def from_json(cls, obj: dict) -> "Certificate":
+        att_obj = obj.get("attestation")
+        att = Attestation.from_json(att_obj) if att_obj is not None else None
         return cls(
             gate1=Verdict.from_json(obj["gate1"]),
             gate2=Verdict.from_json(obj["gate2"]),
@@ -179,6 +200,7 @@ class Certificate:
             assumptions=tuple(obj.get("assumptions", ())),
             final_notional_usd=float(obj["final_notional_usd"]),
             approves=_parse_approves(obj.get("approves", False)),
+            attestation=att,
         )
 
 

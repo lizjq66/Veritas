@@ -30,6 +30,14 @@ check here, push it to Lean instead and re-expose it via this module.
 
 from __future__ import annotations
 
+from dataclasses import replace
+from pathlib import Path
+
+from python.attestation import (
+    SigningKey,
+    compute_build_sha,
+    sign_certificate_body,
+)
 from python.bridge import VeritasCore
 from python.schemas import (
     AccountConstraints,
@@ -41,10 +49,43 @@ from python.schemas import (
 
 
 class Verifier:
-    """Canonical verification surface. Thin wrapper over VeritasCore."""
+    """Canonical verification surface. Thin wrapper over VeritasCore.
 
-    def __init__(self, core: VeritasCore | None = None) -> None:
+    Every Certificate returned by ``verify()`` carries an Attestation
+    signed by the Verifier's Ed25519 key (loaded from
+    ``VERITAS_SIGNING_KEY`` or generated ephemerally with a warning)
+    and bound to the sha256 of the ``veritas-core`` binary in use.
+    Callers can verify these via ``python.attestation.verify_certificate``.
+    Pass ``sign_certificates=False`` to opt out (e.g. for unit tests
+    that compare raw verdicts)."""
+
+    def __init__(
+        self,
+        core: VeritasCore | None = None,
+        *,
+        signing_key: SigningKey | None = None,
+        sign_certificates: bool = True,
+    ) -> None:
         self._core = core or VeritasCore()
+        self._sign = sign_certificates
+        if self._sign:
+            self._signing_key = signing_key or SigningKey.from_env()
+            self._build_sha = compute_build_sha(Path(self._core.binary))
+        else:
+            self._signing_key = None
+            self._build_sha = None
+
+    @property
+    def public_key(self) -> str | None:
+        """Base64 Ed25519 public key used to sign attestations, or
+        ``None`` if signing is disabled."""
+        return self._signing_key.public_key_b64 if self._signing_key else None
+
+    @property
+    def build_sha(self) -> str | None:
+        """sha256 of the ``veritas-core`` binary attested in
+        signatures, or ``None`` if signing is disabled."""
+        return self._build_sha
 
     # ── Single-gate interfaces ─────────────────────────────────
 
@@ -94,4 +135,12 @@ class Verifier:
         """
         port = portfolio or Portfolio()
         obj = self._core.emit_certificate(proposal, constraints, port)
-        return Certificate.from_json(obj)
+        cert = Certificate.from_json(obj)
+        if not self._sign:
+            return cert
+        attestation = sign_certificate_body(
+            cert.body_json(),
+            signing_key=self._signing_key,
+            build_sha=self._build_sha,
+        )
+        return replace(cert, attestation=attestation)
