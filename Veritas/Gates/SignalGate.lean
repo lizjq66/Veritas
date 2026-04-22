@@ -22,7 +22,7 @@ open Veritas Veritas.Strategy
 
 /-- Build the market snapshot a proposal is implicitly referencing. -/
 def snapshotOf (p : TradeProposal) : MarketSnapshot :=
-  ⟨p.fundingRate, p.price, p.timestamp, p.openInterest, p.spotPrice⟩
+  ⟨p.fundingRate, p.price, p.timestamp, p.openInterest, p.spotPrice, p.liquidations24h⟩
 
 /-- Gate 1: check signal consistency across the policy registry.
 

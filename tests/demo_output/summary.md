@@ -39,6 +39,7 @@ than just runner outcomes.
 |------------|------|-------|-----------------------|
 | `funding_rate_reverts_within_8h` | 24 | 24 | 100% |
 | `basis_reverts_within_24h` | 0 | 0 | 50% |
+| `price_reverts_after_liquidation_cascade_within_4h` | 0 | 0 | 50% |
 
 ## Post-approval outcomes (assumption classification)
 
@@ -69,7 +70,7 @@ Wins over totals after each approved proposal closed out.
 
 | Check | Value |
 |-------|-------|
-| journal.db MD5 (session rows only) | `154b079ec896f88352c2fde537f02443` |
+| journal.db MD5 (session rows only) | `f4121cb4515f0724e200b7146d25e4ec` |
 | Byte-identical across runs | yes (verified by `test_full_loop_deterministic`) |
 
 ---

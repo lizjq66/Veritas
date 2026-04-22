@@ -28,6 +28,14 @@ ASSUMPTIONS_SEED = [
             "of zero inside 24 hours."
         ),
     },
+    {
+        "name": "price_reverts_after_liquidation_cascade_within_4h",
+        "description": (
+            "After |liquidations24h| exceeds $50M on Hyperliquid BTC "
+            "perp, price reverts at least halfway toward the "
+            "pre-cascade level within 4 hours."
+        ),
+    },
 ]
 
 _conn: sqlite3.Connection | None = None

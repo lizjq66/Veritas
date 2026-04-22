@@ -44,6 +44,13 @@ structure MarketSnapshot where
   timestamp : Nat
   openInterest : Rat := 0
   spotPrice : Rat := 0
+  /-- Net 24-hour liquidation flow in USD notional. Signed:
+      positive = net short-side liquidations (price surged, shorts
+      stopped out); negative = net long-side liquidations (price
+      crashed, longs stopped out). Consumed by
+      `Strategy.LiquidationCascade`. Default 0 means "liquidation data
+      unavailable" and that strategy refuses to fire. -/
+  liquidations24h : Rat := 0
   deriving Repr, Inhabited
 
 /-- A trading signal produced by the decision engine. -/

@@ -26,6 +26,10 @@ structure TradeProposal where
   timestamp : Nat
   openInterest : Rat := 0
   spotPrice : Rat := 0
+  /-- Net 24-hour signed liquidation flow in USD. Consumed by
+      `LiquidationCascade`; default 0 means "liquidation data
+      unavailable" and that strategy will not fire. -/
+  liquidations24h : Rat := 0
   /-- Asset symbol. Gate 3 uses this for same-asset direction checks
       and cross-asset correlation weighting. -/
   asset : String := ""

@@ -63,7 +63,7 @@ class VeritasCore:
     # ── Gate surface ───────────────────────────────────────────────
 
     def verify_signal(self, proposal: "TradeProposal") -> dict:
-        """Gate 1: signal consistency (multi-policy, v0.2+)."""
+        """Gate 1: signal consistency (multi-policy)."""
         return self._call("verify-signal", [
             proposal.direction,
             str(proposal.funding_rate),
@@ -72,6 +72,7 @@ class VeritasCore:
             str(proposal.open_interest),
             str(proposal.notional_usd),
             str(proposal.spot_price),
+            str(proposal.liquidations24h),
         ])
 
     def check_constraints(

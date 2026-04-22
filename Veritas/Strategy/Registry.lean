@@ -18,6 +18,7 @@
 import Veritas.Types
 import Veritas.Strategy.FundingReversion
 import Veritas.Strategy.BasisReversion
+import Veritas.Strategy.LiquidationCascade
 
 namespace Veritas.Strategy
 
@@ -29,14 +30,17 @@ structure Strategy where
   decide : MarketSnapshot → Option Signal
   extractAssumptions : Signal → List Assumption
 
-/-- The built-in v0.2 policy registry. -/
+/-- The built-in policy registry. -/
 def allStrategies : List Strategy := [
   { name := "funding_reversion"
   , decide := Veritas.Strategy.decide
   , extractAssumptions := Veritas.Strategy.extractAssumptions },
   { name := "basis_reversion"
   , decide := Veritas.Strategy.decideBasis
-  , extractAssumptions := Veritas.Strategy.extractBasisAssumptions }
+  , extractAssumptions := Veritas.Strategy.extractBasisAssumptions },
+  { name := "liq_cascade_reversion"
+  , decide := Veritas.Strategy.decideCascade
+  , extractAssumptions := Veritas.Strategy.extractCascadeAssumptions }
 ]
 
 /-- Every signal emitted by any strategy in the registry on the given

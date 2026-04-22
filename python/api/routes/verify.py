@@ -46,6 +46,7 @@ class ProposalIn(BaseModel):
     timestamp: int = 0
     open_interest: float = 0.0
     spot_price: float = 0.0
+    liquidations24h: float = 0.0
     asset: str = ""
 
 
@@ -94,6 +95,7 @@ def _to_proposal(p: ProposalIn) -> TradeProposal:
         timestamp=p.timestamp,
         open_interest=p.open_interest,
         spot_price=p.spot_price,
+        liquidations24h=p.liquidations24h,
         asset=p.asset,
     )
 

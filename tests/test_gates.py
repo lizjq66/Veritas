@@ -135,6 +135,69 @@ def test_gate1_only_basis_fires(verifier):
     assert "funding_rate_reverts_within_8h" not in names
 
 
+def test_gate1_liquidation_cascade_alone_fires(verifier):
+    """Third strategy: liquidation cascade reversion. Net +$100M
+    short-side liquidations → SHORT signal (revert the surge)."""
+    proposal = TradeProposal(
+        direction="SHORT", notional_usd=1500.0,
+        funding_rate=0.0, price=68000.0, timestamp=0,
+        liquidations24h=100_000_000.0,
+    )
+    verdict, assumptions = verifier.verify_signal(proposal)
+    assert verdict.tag == "approve"
+    names = {a["name"] for a in assumptions}
+    assert "price_reverts_after_liquidation_cascade_within_4h" in names
+
+
+def test_gate1_all_three_strategies_agree(verifier):
+    """Funding +0.12% (LONG), perp cheap vs spot (LONG), net −$100M
+    liquidations (longs stopped → LONG). All three agree → approve
+    with THREE assumptions attached."""
+    proposal = TradeProposal(
+        direction="LONG", notional_usd=1500.0,
+        funding_rate=0.0012, price=67700.0, timestamp=0,
+        spot_price=68000.0, liquidations24h=-100_000_000.0,
+    )
+    verdict, assumptions = verifier.verify_signal(proposal)
+    assert verdict.tag == "approve"
+    names = {a["name"] for a in assumptions}
+    assert names == {
+        "funding_rate_reverts_within_8h",
+        "basis_reverts_within_24h",
+        "price_reverts_after_liquidation_cascade_within_4h",
+    }
+
+
+def test_gate1_three_way_partial_disagreement_rejects(verifier):
+    """Funding +0.12% → LONG; basis (perp rich) → SHORT; cascade
+    liquidations +$100M → SHORT. Two agree on SHORT, but one
+    (funding) dissents → Gate 1 rejects as strategies_contradict."""
+    proposal = TradeProposal(
+        direction="SHORT", notional_usd=1500.0,
+        funding_rate=0.0012, price=68300.0, timestamp=0,
+        spot_price=68000.0, liquidations24h=100_000_000.0,
+    )
+    verdict, _ = verifier.verify_signal(proposal)
+    assert verdict.tag == "reject"
+    assert "strategies_contradict" in verdict.reason_codes
+
+
+def test_gate1_cascade_below_threshold_does_not_fire(verifier):
+    """|liquidations24h| = $10M is below the $50M threshold; cascade
+    strategy stays silent."""
+    proposal = TradeProposal(
+        direction="LONG", notional_usd=1500.0,
+        funding_rate=0.0012, price=68000.0, timestamp=0,
+        liquidations24h=10_000_000.0,
+    )
+    verdict, assumptions = verifier.verify_signal(proposal)
+    # funding still fires LONG, approves
+    assert verdict.tag == "approve"
+    names = {a["name"] for a in assumptions}
+    assert "price_reverts_after_liquidation_cascade_within_4h" not in names
+    assert "funding_rate_reverts_within_8h" in names
+
+
 def test_gate1_both_fire_agree_but_proposal_wrong_direction(verifier):
     """Both strategies fire and agree on LONG, but caller proposed SHORT.
     Gate 1 rejects with direction_conflicts, NOT strategies_contradict."""

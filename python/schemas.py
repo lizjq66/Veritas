@@ -38,6 +38,11 @@ class TradeProposal:
     """Concurrent spot price on the reference venue. Required by
     strategies that look at the perp--spot basis; left at 0.0 means
     'spot unknown' and such strategies will not fire."""
+    liquidations24h: float = 0.0
+    """Net 24-hour signed liquidation flow in USD. Positive means net
+    short-side liquidations (price surged); negative means net
+    long-side liquidations. Consumed by `liq_cascade_reversion`;
+    default 0 means data unavailable and that strategy will not fire."""
     asset: str = ""
     """Asset symbol (e.g. "BTC"). Gate 3 uses this for same-asset
     direction-conflict detection and cross-asset correlation weighting.
