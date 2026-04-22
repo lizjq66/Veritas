@@ -20,7 +20,7 @@ open Veritas Veritas.Strategy
     On approval, attaches Veritas's declared assumptions for this signal. -/
 def verifySignal (p : TradeProposal) : Verdict × List Assumption :=
   let snap : MarketSnapshot :=
-    ⟨p.fundingRate, p.price, p.timestamp, p.openInterest⟩
+    ⟨p.fundingRate, p.price, p.timestamp, p.openInterest, 0.0⟩
   match decide snap with
   | none =>
     (.Reject ["no_signal_under_policy"], [])
@@ -45,7 +45,7 @@ def verifySignal (p : TradeProposal) : Verdict × List Assumption :=
 def signalConsistent (p : TradeProposal) : Prop :=
   ∃ s : Signal,
     Veritas.Strategy.decide
-        ⟨p.fundingRate, p.price, p.timestamp, p.openInterest⟩ = some s
+        ⟨p.fundingRate, p.price, p.timestamp, p.openInterest, 0.0⟩ = some s
     ∧ s.direction = p.direction
     ∧ Veritas.Strategy.extractAssumptions s ≠ []
 
@@ -60,7 +60,7 @@ theorem verifySignal_approve_implies_consistent
     (h : (verifySignal p).1 = .Approve) :
     signalConsistent p := by
   cases hd : Strategy.decide
-      ⟨p.fundingRate, p.price, p.timestamp, p.openInterest⟩ with
+      ⟨p.fundingRate, p.price, p.timestamp, p.openInterest, 0.0⟩ with
   | none =>
     -- verifySignal reduces to (Reject _, []), contradicting h.
     simp [verifySignal, hd] at h

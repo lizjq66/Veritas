@@ -32,6 +32,7 @@ import Lean.Data.Json.Parser
 import Veritas.Types
 import Veritas.Finance.PositionSizing
 import Veritas.Strategy.FundingReversion
+import Veritas.Strategy.BasisReversion
 import Veritas.Strategy.ExitLogic
 import Veritas.Strategy.Regime
 import Veritas.Learning.Reliability
@@ -96,7 +97,7 @@ private def handleDecide (args : List String) : IO UInt32 := do
     | [a, b, c, d] => pure (a, b, c, d)
     | _ => IO.eprintln "usage: veritas-core decide <fr> <price> <ts> [oi]"; return 1
   let snapshot : MarketSnapshot :=
-    ⟨strToFloat! frS, strToFloat! priceS, tsS.toNat!, strToFloat! oiS⟩
+    ⟨strToFloat! frS, strToFloat! priceS, tsS.toNat!, strToFloat! oiS, 0.0⟩
   match Strategy.decide snapshot with
   | some signal =>
     IO.println (jsonObj [jsonStr "action" "signal",
@@ -106,6 +107,44 @@ private def handleDecide (args : List String) : IO UInt32 := do
   | none =>
     IO.println "null"
   return 0
+
+/-- Basis-reversion strategy decider (v0.2 Slice 1).
+    Takes spot price explicitly; funding rate and open interest are
+    passed through for completeness but not consulted by the basis
+    strategy itself. -/
+private def handleDecideBasis (args : List String) : IO UInt32 := do
+  match args with
+  | [perpS, spotS, tsS] =>
+    let snapshot : MarketSnapshot :=
+      ⟨0.0, strToFloat! perpS, tsS.toNat!, 0.0, strToFloat! spotS⟩
+    match Strategy.decideBasis snapshot with
+    | some signal =>
+      IO.println (jsonObj [jsonStr "action" "signal",
+                           jsonStr "strategy" "basis_reversion",
+                           jsonStr "direction" signal.direction.toString,
+                           jsonNum "perp_price" signal.price,
+                           jsonNum "spot_price" (strToFloat! spotS)])
+      return 0
+    | none =>
+      IO.println "null"; return 0
+  | _ =>
+    IO.eprintln "usage: veritas-core decide-basis <perp_price> <spot_price> <timestamp>"
+    return 1
+
+/-- Extract basis-reversion assumptions for a signal. -/
+private def handleExtractBasis (args : List String) : IO UInt32 := do
+  match args with
+  | [dirS, perpS] =>
+    match Direction.fromString? dirS with
+    | none => IO.eprintln s!"unknown direction: {dirS}"; return 1
+    | some dir =>
+      let signal : Signal := ⟨dir, 0.0, strToFloat! perpS⟩
+      let assumptions := Strategy.extractBasisAssumptions signal
+      IO.println (jsonAssumptions assumptions)
+      return 0
+  | _ =>
+    IO.eprintln "usage: veritas-core extract-basis <direction> <perp_price>"
+    return 1
 
 private def handleExtract (args : List String) : IO UInt32 := do
   match args with
@@ -140,7 +179,7 @@ private def handleMonitor (args : List String) : IO UInt32 := do
     | none => IO.eprintln s!"unknown direction: {dirS}"; return 1
     | some dir =>
       let snapshot : MarketSnapshot :=
-        ⟨strToFloat! frS, strToFloat! priceS, tsS.toNat!, strToFloat! oiS⟩
+        ⟨strToFloat! frS, strToFloat! priceS, tsS.toNat!, strToFloat! oiS, 0.0⟩
       let position : Position :=
         ⟨dir, strToFloat! epS, strToFloat! szS, strToFloat! levS,
          strToFloat! slS, etsS.toNat!, aname⟩
@@ -404,6 +443,9 @@ def main (args : List String) : IO UInt32 := do
     -- Primitive commands (building blocks)
     | "decide"              => handleDecide rest
     | "extract"             => handleExtract rest
+    -- BasisReversion primitives (v0.2 Slice 1; not yet wired into Gate 1)
+    | "decide-basis"        => handleDecideBasis rest
+    | "extract-basis"       => handleExtractBasis rest
     | "size"                => handleSize rest
     | "monitor"             => handleMonitor rest
     | "update-reliability"  => handleUpdateReliability rest

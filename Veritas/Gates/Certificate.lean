@@ -96,7 +96,7 @@ theorem certificate_soundness
     exfalso
     have hv1 : (verifySignal p).1 = .Resize n := by rw [hv]; exact hg1
     cases hd : Strategy.decide
-        ⟨p.fundingRate, p.price, p.timestamp, p.openInterest⟩ with
+        ⟨p.fundingRate, p.price, p.timestamp, p.openInterest, 0.0⟩ with
     | none => simp [verifySignal, hd] at hv1
     | some s =>
       by_cases hdir : (s.direction == p.direction) = true

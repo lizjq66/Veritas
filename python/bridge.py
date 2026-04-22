@@ -172,6 +172,25 @@ class VeritasCore:
         ])
         return result if result else []
 
+    # ── v0.2 Slice 1 — BasisReversion primitives ────────────────
+    # Gate 1 does not yet dispatch to BasisReversion (that is Slice 2);
+    # for now these are standalone entry points so the strategy can be
+    # exercised and tested in isolation.
+
+    def decide_basis(self, perp_price: float, spot_price: float,
+                     timestamp: int = 0) -> dict | None:
+        """BasisReversion decider. Returns a signal dict or None."""
+        return self._call("decide-basis", [
+            str(perp_price), str(spot_price), str(timestamp),
+        ])
+
+    def extract_basis(self, signal: dict) -> list[dict]:
+        """BasisReversion assumptions for a given signal."""
+        result = self._call("extract-basis", [
+            signal["direction"], str(signal["price"]),
+        ])
+        return result if result else []
+
     def size(self, equity: float, reliability: float, sample_size: int) -> dict:
         """Reliability-adjusted position size (the Gate 2 ceiling)."""
         return self._call("size", [str(equity), str(reliability), str(sample_size)])

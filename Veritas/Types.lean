@@ -30,12 +30,20 @@ inductive Regime where
   | Unknown
   deriving Repr, BEq, Inhabited, DecidableEq
 
-/-- A snapshot of market state at a point in time. -/
+/-- A snapshot of market state at a point in time.
+
+    `btcPrice` is the perp mark price. `spotPrice` is the concurrent
+    spot price on the reference venue (e.g. Coinbase / Binance spot).
+    Strategies that do not care about the spot leg can leave
+    `spotPrice` at its default of 0 — Veritas treats 0 as "spot
+    unknown" and strategies such as BasisReversion explicitly
+    refuse to fire on missing spot. -/
 structure MarketSnapshot where
   fundingRate : Float
   btcPrice : Float
   timestamp : Nat
   openInterest : Float := 0.0
+  spotPrice : Float := 0.0
   deriving Repr, Inhabited
 
 /-- A trading signal produced by the decision engine. -/
