@@ -30,7 +30,7 @@ Veritas sits between your trading agent and the exchange. Your agent produces a 
 
 Gate logic is written in Lean 4 with closed proofs. Python is transport only.
 
-Veritas is **not** a trading bot. It has no market view, no loop, no strategy. It is infrastructure — the same call works for a LangGraph node, a Claude tool-use agent, or a shell script hitting `curl`.
+Veritas is **not** a trading bot. It has no market view, no loop, no strategy, and no connection to any exchange. You bring the venue; Veritas returns the verdict. The same call works for a LangGraph node, a Claude tool-use agent, or a shell script hitting `curl`.
 
 ## Quick start
 

@@ -22,6 +22,15 @@ tools — is an **example runner** that demonstrates a caller wiring
 itself to Veritas. When touching that code, preserve the distinction:
 the product is the verifier, the runner is a demo.
 
+**Veritas is agent-facing infrastructure. The caller brings venue
+connectivity, price feeds, and execution; Veritas returns the
+verdict.** The bundled Hyperliquid observer and executor exist only
+to make "what a caller's integration looks like" concrete — they are
+example tooling, not product surface. No release milestone gates on
+their behavior against a live venue, testnet or otherwise. The
+intended entry points for new callers are `examples/external_integration/`
+(Anthropic SDK, LangGraph), not `observer.py` / `executor.py`.
+
 ## Language policy
 
 All pure functions go in Lean. That includes every gate decision, every
@@ -97,8 +106,15 @@ python -m pytest tests/ -v
 - A new **policy** (e.g. basis arbitrage) → new file under
   `Veritas/Strategy/`, referenced from `verifySignal`, assumptions
   declared via `extractAssumptions`.
-- A new **venue adapter** → a sibling to `observer.py` / `executor.py`.
-  Observes and executes only; never branches on Veritas types.
+- A new **caller integration** → a subdirectory under
+  `examples/external_integration/`, next to the Anthropic SDK and
+  LangGraph demos. Shows how one specific kind of caller wires itself
+  to the verifier. Never branches on Veritas types.
+- A new **venue adapter** (Hyperliquid-style observer/executor) →
+  **not on the roadmap.** The caller is responsible for venue
+  connectivity. Only add one if you're extending the bundled example
+  runner for demo purposes, and be aware that investing time in it
+  will not advance any release milestone.
 
 Exchange integrations, runners, dashboards, and journals are
 **secondary adapters**, not the product core. Keep them demotable.
@@ -126,13 +142,28 @@ When adding a new gate or extending an existing one, ship the
 soundness theorem alongside the dispatch function. A gate without
 its own soundness theorem is a dispatcher, not a verifier.
 
-## v0.1 ship criterion
+## Roadmap scope
 
-v0.1 ships when the verifier API contract holds against fixture
-proposals — not when an adapter has executed real trades. Concretely:
-`tests/test_gates.py`, `tests/test_api_endpoints.py`,
-`tests/test_mcp_server.py`, and `tests/test_bypass_invariant.py` all
-pass; `lake build` produces a sorry-free binary. Whether
-`HyperliquidObserver` / `HyperliquidExecutor` have been exercised
-against real testnet traffic is explicitly a v0.2+ concern and does
-not gate the v0.1 release.
+Veritas ships in slices; each slice must leave `lake build`
+sorry-free and `pytest` green. What counts as a slice:
+
+- A new gate, or a deeper soundness theorem on an existing gate
+- A new strategy that makes Gate 1's multi-policy arbitration
+  non-trivial at a new N
+- Trust-infrastructure work: signed certificates, public theorem
+  registry, reproducible builds, freshness/revocation
+- Caller-facing API / SDK polish on the HTTP, MCP, and Python surfaces
+
+What is **not** a slice and does not gate any release (v0.1 or later):
+
+- Exercising `HyperliquidObserver` / `HyperliquidExecutor` against
+  real testnet or mainnet traffic
+- Adding a second or third venue adapter
+- Running the bundled example runner as a real trading loop
+- Dashboard / playground visual polish beyond what the verifier
+  surface needs to demo
+
+The shipping test for any release is verifier correctness, not
+integrator behavior: `tests/test_gates.py`, `tests/test_api_endpoints.py`,
+`tests/test_mcp_server.py`, and `tests/test_bypass_invariant.py` pass
+and `lake build` produces a sorry-free binary.
