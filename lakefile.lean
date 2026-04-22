@@ -1,6 +1,8 @@
 import Lake
 open Lake DSL
 
+require "leanprover-community" / "mathlib" @ git "v4.29.0"
+
 package «veritas» where
   leanOptions := #[⟨`autoImplicit, false⟩]
 
