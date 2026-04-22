@@ -21,6 +21,7 @@ structure TradeProposal where
   price : Float
   timestamp : Nat
   openInterest : Float := 0.0
+  spotPrice : Float := 0.0
   deriving Repr, Inhabited
 
 /-- Account-level constraints a proposal must satisfy.

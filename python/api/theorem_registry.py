@@ -108,10 +108,11 @@ THEOREMS: dict[str, dict] = {
         "file": "Veritas/Gates/SignalGate.lean",
         "status": "proven",
         "statement_natural_language":
-            "If Gate 1 approves a proposal, then the proposal is "
-            "signal-consistent: Veritas's own policy would emit a signal "
-            "for the submitted context, its direction matches the "
-            "proposal's, and at least one assumption is attached.",
+            "If Gate 1 approves a proposal, then (1) at least one "
+            "strategy in the policy registry fires on the submitted "
+            "context, (2) all firing strategies are mutually consistent "
+            "on direction, (3) the proposal's direction matches them, "
+            "and (4) the union of attached assumptions is non-empty.",
         "axioms_used": [],
     },
     "checkConstraints_approve_within_ceiling": {

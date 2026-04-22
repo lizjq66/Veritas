@@ -2,84 +2,124 @@
   Veritas.Gates.SignalGate — Gate 1: signal / assumption consistency.
 
   Given a proposed trade and the market context it was formed under,
-  verify that:
-    1. Veritas's own policy would emit a signal in this context.
-    2. The proposal direction agrees with that signal.
-    3. The signal carries well-formed, non-empty assumptions.
+  Gate 1 runs every strategy in the policy registry, collects the
+  firing signals, and verifies that:
+
+    1. At least one strategy fires on this context.
+    2. All firing strategies agree on direction
+       (MutuallyConsistent — the v0.2 addition).
+    3. The proposal's direction matches the firing strategies'.
+    4. The combined assumption list is non-empty.
 
   This gate does not know about capital or risk. Those belong to Gate 2.
 -/
 import Veritas.Gates.Types
-import Veritas.Strategy.FundingReversion
+import Veritas.Strategy.Registry
 
 namespace Veritas.Gates
 
 open Veritas Veritas.Strategy
 
-/-- Gate 1: check signal consistency.
-    On approval, attaches Veritas's declared assumptions for this signal. -/
+/-- Build the market snapshot a proposal is implicitly referencing. -/
+def snapshotOf (p : TradeProposal) : MarketSnapshot :=
+  ⟨p.fundingRate, p.price, p.timestamp, p.openInterest, p.spotPrice⟩
+
+/-- Gate 1: check signal consistency across the policy registry.
+
+    Execution order inside the gate:
+      - Collect every firing strategy's signal.
+      - If the set is empty → reject (no policy fires on this context).
+      - If firing strategies disagree → reject (policies contradict).
+      - If the (agreed) direction disagrees with the proposal → reject.
+      - If the resulting assumption list is empty → reject.
+      - Otherwise approve, attaching the union of assumptions from
+        all firing strategies whose direction matches the proposal. -/
 def verifySignal (p : TradeProposal) : Verdict × List Assumption :=
-  let snap : MarketSnapshot :=
-    ⟨p.fundingRate, p.price, p.timestamp, p.openInterest, 0.0⟩
-  match decide snap with
-  | none =>
+  match firingSignals (snapshotOf p) with
+  | [] =>
     (.Reject ["no_signal_under_policy"], [])
-  | some s =>
-    if s.direction == p.direction then
-      let assumptions := extractAssumptions s
-      match assumptions with
-      | []      => (.Reject ["malformed_proposal_no_assumptions"], [])
-      | _ :: _  => (.Approve, assumptions)
+  | s :: rest =>
+    if mutuallyConsistent (s :: rest) then
+      if s.direction == p.direction then
+        match attachedAssumptions (snapshotOf p) p.direction with
+        | []      => (.Reject ["malformed_proposal_no_assumptions"], [])
+        | a :: as => (.Approve, a :: as)
+      else
+        (.Reject ["direction_conflicts_with_signal"], [])
     else
-      (.Reject ["direction_conflicts_with_signal"], [])
+      (.Reject ["strategies_contradict"], [])
 
 -- ── Soundness contract ────────────────────────────────────────────
 
 /-- Signal-consistency predicate. A proposal is signal-consistent when
-    Veritas's built-in decider would emit a signal for the submitted
-    market context, the signal's direction matches the proposal's
-    direction, and at least one assumption is attached.
+    the policy registry fires at least one strategy on the submitted
+    context, those firing strategies are mutually consistent on
+    direction, the proposal's direction agrees with them, and the
+    combined assumption list is non-empty.
 
     This is the meaning of a Gate 1 approval, stated as a Prop so
     downstream reasoning can quote it directly. -/
 def signalConsistent (p : TradeProposal) : Prop :=
+  let snap := snapshotOf p
   ∃ s : Signal,
-    Veritas.Strategy.decide
-        ⟨p.fundingRate, p.price, p.timestamp, p.openInterest, 0.0⟩ = some s
+    s ∈ firingSignals snap
+    ∧ MutuallyConsistent (firingSignals snap)
     ∧ s.direction = p.direction
-    ∧ Veritas.Strategy.extractAssumptions s ≠ []
+    ∧ attachedAssumptions snap p.direction ≠ []
 
 /-- Gate 1 soundness: if `verifySignal` approves a proposal, then the
-    proposal satisfies `signalConsistent`.
+    proposal satisfies `signalConsistent` against the policy registry.
 
-    This lifts SignalGate's dispatch into a first-class theorem at the
-    gate layer. Readers can see exactly what an Approve verdict means
-    without reading through the `verifySignal` body. -/
+    This is the v0.2 upgrade of the v0.1 theorem: in v0.1 the
+    registry had one entry and the theorem degenerated to "direction
+    matches that one entry"; now the theorem captures genuine
+    multi-policy consistency. -/
 theorem verifySignal_approve_implies_consistent
     (p : TradeProposal)
     (h : (verifySignal p).1 = .Approve) :
     signalConsistent p := by
-  cases hd : Strategy.decide
-      ⟨p.fundingRate, p.price, p.timestamp, p.openInterest, 0.0⟩ with
-  | none =>
-    -- verifySignal reduces to (Reject _, []), contradicting h.
-    simp [verifySignal, hd] at h
-  | some s =>
-    by_cases hdir : (s.direction == p.direction) = true
-    · cases hlist : Strategy.extractAssumptions s with
-      | nil =>
-        -- verifySignal reduces to (Reject _, []), contradicting h.
-        simp [verifySignal, hd, hdir, hlist] at h
-      | cons x xs =>
-        refine ⟨s, hd, ?_, ?_⟩
-        · -- s.direction = p.direction via case split on the enum.
-          cases hs : s.direction <;> cases hp : p.direction
-          · rfl
-          · rw [hs, hp] at hdir; cases hdir
-          · rw [hs, hp] at hdir; cases hdir
-          · rfl
-        · rw [hlist]; exact List.cons_ne_nil x xs
-    · -- Direction mismatch → Reject, contradicting h.
-      simp [verifySignal, hd, hdir] at h
+  -- Unfold verifySignal at h so the match on firingSignals is visible.
+  unfold verifySignal at h
+  -- Case on what the registry emitted for this snapshot.
+  cases hsig : firingSignals (snapshotOf p) with
+  | nil =>
+    -- firingSignals = []  →  verifySignal = (.Reject _, [])  →  h is a contradiction.
+    rw [hsig] at h
+    cases h
+  | cons s rest =>
+    rw [hsig] at h
+    by_cases hmc : mutuallyConsistent (s :: rest) = true
+    · -- Strategies agree on direction.
+      simp only [hmc, if_true] at h
+      by_cases hdir : (s.direction == p.direction) = true
+      · simp only [hdir, if_true] at h
+        -- Inspect assumption list.
+        cases hlist : attachedAssumptions (snapshotOf p) p.direction with
+        | nil =>
+          rw [hlist] at h; cases h
+        | cons x xs =>
+          -- Approve branch. Build witness for signalConsistent.
+          refine ⟨s, ?_, ?_, ?_, ?_⟩
+          · -- s ∈ firingSignals (snapshotOf p)
+            rw [hsig]; exact List.Mem.head rest
+          · -- MutuallyConsistent (firingSignals ...)
+            unfold MutuallyConsistent; rw [hsig]; exact hmc
+          · -- s.direction = p.direction  (from hdir : (==) = true)
+            cases hs : s.direction <;> cases hp : p.direction
+            · rfl
+            · rw [hs, hp] at hdir; cases hdir
+            · rw [hs, hp] at hdir; cases hdir
+            · rfl
+          · rw [hlist]; exact List.cons_ne_nil x xs
+      · -- Directions disagree → reject.
+        simp only [hdir, if_false] at h
+        cases h
+    · -- Strategies disagree → reject.
+      have hmcf : mutuallyConsistent (s :: rest) = false := by
+        cases hval : mutuallyConsistent (s :: rest)
+        · rfl
+        · exact absurd hval hmc
+      simp only [hmcf, if_false] at h
+      cases h
 
 end Veritas.Gates

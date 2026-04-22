@@ -170,12 +170,24 @@ Each is a gate returning one of \textsc{approve}, \textsc{resize}, or
 
 \subsection{Gate~1 --- Signal Consistency}
 Given the proposed trade and the market context the caller claims to be
-acting under, does the proposal cohere? In particular: does the direction
-match what a declared policy would emit here, and does the proposal carry
-well-formed, non-empty assumptions? Gate~1 forces the caller to be
-explicit about what it is betting on. On approval, Gate~1 attaches the
-assumptions Veritas's policy associates with the signal, so downstream
-auditors see \emph{what was bet on}.
+acting under, does the proposal cohere? Gate~1 dispatches over a
+\emph{policy registry} --- a list of named strategies, each with its own
+decider and assumption extractor. For every submitted proposal, Gate~1
+runs every registered strategy's decider on the context, collects the
+set of firing signals, and checks that (i)~at least one strategy fires,
+(ii)~all firing strategies agree on direction
+(\texttt{MutuallyConsistent}), (iii)~the proposal's direction matches
+them, and (iv)~the union of attached assumptions is non-empty. On
+approval Gate~1 returns this union, so downstream auditors see every
+bet the caller is implicitly committing to.
+
+The non-triviality of Gate~1 depends on the registry containing at
+least two strategies that can meaningfully disagree. The current
+registry ships with \texttt{funding\_reversion} and
+\texttt{basis\_reversion}, which produce opposite-direction signals on
+the same market context under conditions of long-side pressure
+(positive funding rate plus perp-rich-vs-spot). That disagreement is
+the case Gate~1's consistency check is designed to detect and reject.
 
 \subsection{Gate~2 --- Strategy-Constraint Compatibility}
 Given the caller's account envelope (equity, reliability of the attached
@@ -189,9 +201,10 @@ whose formal content is strongest in v0.1.
 \subsection{Gate~3 --- Portfolio Interference}
 Given the caller's existing positions and the (possibly resized)
 proposal, does the combined exposure violate portfolio-wide constraints?
-v0.1 catches opposite-direction conflicts and enforces a gross-notional
-cap; v0.2 will handle multi-asset correlation once a second policy is
-active.
+The current version catches opposite-direction conflicts and enforces
+a gross-notional cap; richer correlation handling across asset classes
+becomes meaningful once the registry contains strategies over
+heterogeneous assets.
 
 \medskip
 

@@ -66,8 +66,14 @@
               <input id="f-funding" type="number" step="0.0001" class="mt-1 w-full mono text-sm rounded border-slate-300 py-1 px-2" value="0.0012">
             </label>
             <label class="block">
-              <span class="text-xs text-slate-500">price (USD)</span>
+              <span class="text-xs text-slate-500">perp price (USD)</span>
               <input id="f-price" type="number" step="100" class="mt-1 w-full mono text-sm rounded border-slate-300 py-1 px-2" value="68000">
+            </label>
+          </div>
+          <div class="grid grid-cols-1 gap-3">
+            <label class="block">
+              <span class="text-xs text-slate-500">spot_price (0 = unknown; basis policy skipped)</span>
+              <input id="f-spot" type="number" step="100" class="mt-1 w-full mono text-sm rounded border-slate-300 py-1 px-2" value="0">
             </label>
           </div>
         </div>
@@ -210,12 +216,24 @@ const $ = (id) => document.getElementById(id);
 
 // ── Preset scenarios ─────────────────────────────────────────────
 const PRESETS = [
-  { label: "Clean approve",          dir: "LONG",  notional: 1500, funding:  0.0012, price: 68000, equity: 10000, rel: 0.80, samples: 20, pos: null },
-  { label: "Direction conflict",     dir: "LONG",  notional: 1500, funding: -0.0008, price: 68000, equity: 10000, rel: 0.80, samples: 20, pos: null },
-  { label: "No signal under policy", dir: "LONG",  notional: 1500, funding:  0.0001, price: 68000, equity: 10000, rel: 0.80, samples: 20, pos: null },
-  { label: "Oversize → resize",      dir: "LONG",  notional: 9000, funding:  0.0012, price: 68000, equity: 10000, rel: 0.90, samples: 30, pos: null },
-  { label: "No edge (reliability ≤ 0.5)", dir: "LONG", notional: 1000, funding: 0.0012, price: 68000, equity: 10000, rel: 0.50, samples: 30, pos: null },
-  { label: "Portfolio conflict",     dir: "LONG",  notional: 1000, funding:  0.0012, price: 68000, equity: 10000, rel: 0.80, samples: 20, pos: { dir: "SHORT", entry: 67500, size: 0.03 } },
+  { label: "Clean approve (funding only)",
+    dir: "LONG",  notional: 1500, funding:  0.0012, price: 68000, spot: 0,     equity: 10000, rel: 0.80, samples: 20, pos: null },
+  { label: "Both strategies agree (attach 2 assumptions)",
+    dir: "LONG",  notional: 1500, funding:  0.0012, price: 67700, spot: 68000, equity: 10000, rel: 0.80, samples: 20, pos: null },
+  { label: "Strategies contradict (v0.2)",
+    dir: "LONG",  notional: 1500, funding:  0.0012, price: 68300, spot: 68000, equity: 10000, rel: 0.80, samples: 20, pos: null },
+  { label: "Only basis fires → SHORT",
+    dir: "SHORT", notional: 1500, funding:  0,      price: 68300, spot: 68000, equity: 10000, rel: 0.80, samples: 20, pos: null },
+  { label: "Direction conflict (vs funding)",
+    dir: "LONG",  notional: 1500, funding: -0.0008, price: 68000, spot: 0,     equity: 10000, rel: 0.80, samples: 20, pos: null },
+  { label: "No signal under any policy",
+    dir: "LONG",  notional: 1500, funding:  0.0001, price: 68000, spot: 0,     equity: 10000, rel: 0.80, samples: 20, pos: null },
+  { label: "Oversize → resize",
+    dir: "LONG",  notional: 9000, funding:  0.0012, price: 68000, spot: 0,     equity: 10000, rel: 0.90, samples: 30, pos: null },
+  { label: "No edge (reliability ≤ 0.5)",
+    dir: "LONG",  notional: 1000, funding:  0.0012, price: 68000, spot: 0,     equity: 10000, rel: 0.50, samples: 30, pos: null },
+  { label: "Portfolio conflict",
+    dir: "LONG",  notional: 1000, funding:  0.0012, price: 68000, spot: 0,     equity: 10000, rel: 0.80, samples: 20, pos: { dir: "SHORT", entry: 67500, size: 0.03 } },
 ];
 
 function renderPresets() {
@@ -230,6 +248,7 @@ function applyPreset(p) {
   $("f-notional").value = p.notional;
   $("f-funding").value = p.funding;
   $("f-price").value = p.price;
+  $("f-spot").value = p.spot || 0;
   $("f-equity").value = p.equity;
   $("f-reliability").value = p.rel;
   $("f-samples").value = p.samples;
@@ -255,6 +274,7 @@ function buildBody() {
       price: +$("f-price").value,
       timestamp: 0,
       open_interest: 0,
+      spot_price: +$("f-spot").value,
     },
     constraints: {
       equity: +$("f-equity").value,

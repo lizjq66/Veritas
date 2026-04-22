@@ -60,7 +60,7 @@ def _good_constraints(reliability: float = 0.8,
     )
 
 
-# ── Gate 1: signal consistency ───────────────────────────────────
+# ── Gate 1: signal consistency (single-policy legacy behavior) ────
 
 def test_gate1_approves_aligned_direction(verifier):
     verdict, assumptions = verifier.verify_signal(_long_on_positive_funding())
@@ -84,6 +84,68 @@ def test_gate1_rejects_when_policy_silent(verifier):
     verdict, _ = verifier.verify_signal(_long_on_neutral_funding())
     assert verdict.tag == "reject"
     assert "no_signal_under_policy" in verdict.reason_codes
+
+
+# ── Gate 1: multi-policy behavior (v0.2 Slice 2) ─────────────────
+
+def test_gate1_both_strategies_agree_attaches_both_assumptions(verifier):
+    """Both funding-reversion and basis-reversion fire and both say LONG:
+    funding +0.12%/hr (funding rev says LONG) and perp 67700 < spot 68000
+    (basis rev says LONG). Approve with union of assumptions."""
+    proposal = TradeProposal(
+        direction="LONG", notional_usd=1500.0,
+        funding_rate=0.0012, price=67700.0, timestamp=0,
+        spot_price=68000.0,
+    )
+    verdict, assumptions = verifier.verify_signal(proposal)
+    assert verdict.tag == "approve"
+    names = {a["name"] for a in assumptions}
+    assert "funding_rate_reverts_within_8h" in names
+    assert "basis_reverts_within_24h" in names
+
+
+def test_gate1_strategies_contradict_rejects(verifier):
+    """Funding +0.12% says LONG perp; perp 68300 > spot 68000 says SHORT perp.
+    Two firing strategies, opposite directions → Gate 1 rejects with
+    `strategies_contradict`."""
+    proposal = TradeProposal(
+        direction="LONG", notional_usd=1500.0,
+        funding_rate=0.0012, price=68300.0, timestamp=0,
+        spot_price=68000.0,
+    )
+    verdict, assumptions = verifier.verify_signal(proposal)
+    assert verdict.tag == "reject"
+    assert "strategies_contradict" in verdict.reason_codes
+    assert assumptions == ()
+
+
+def test_gate1_only_basis_fires(verifier):
+    """Funding rate 0 (below threshold) but perp 68300 > spot 68000 by 0.44%.
+    Only basis-reversion fires; it says SHORT. Proposal SHORT is approved."""
+    proposal = TradeProposal(
+        direction="SHORT", notional_usd=1500.0,
+        funding_rate=0.0, price=68300.0, timestamp=0,
+        spot_price=68000.0,
+    )
+    verdict, assumptions = verifier.verify_signal(proposal)
+    assert verdict.tag == "approve"
+    names = {a["name"] for a in assumptions}
+    assert "basis_reverts_within_24h" in names
+    assert "funding_rate_reverts_within_8h" not in names
+
+
+def test_gate1_both_fire_agree_but_proposal_wrong_direction(verifier):
+    """Both strategies fire and agree on LONG, but caller proposed SHORT.
+    Gate 1 rejects with direction_conflicts, NOT strategies_contradict."""
+    proposal = TradeProposal(
+        direction="SHORT", notional_usd=1500.0,
+        funding_rate=0.0012, price=67700.0, timestamp=0,
+        spot_price=68000.0,
+    )
+    verdict, _ = verifier.verify_signal(proposal)
+    assert verdict.tag == "reject"
+    assert "direction_conflicts_with_signal" in verdict.reason_codes
+    assert "strategies_contradict" not in verdict.reason_codes
 
 
 # ── Gate 2: constraints ──────────────────────────────────────────

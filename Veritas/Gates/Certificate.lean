@@ -14,7 +14,7 @@ import Veritas.Gates.PortfolioGate
 
 namespace Veritas.Gates
 
-open Veritas
+open Veritas Veritas.Strategy
 
 /-- Run all three gates and emit a Certificate.
 
@@ -91,19 +91,28 @@ theorem certificate_soundness
     exfalso
     simp [emitCertificate, hv, hg1, Certificate.approves, Verdict.isReject] at h
   | Resize n =>
-    -- verifySignal never returns .Resize. Derive False by case
-    -- analysis on its body; in every branch it produces .Approve or .Reject.
+    -- verifySignal never returns .Resize. Every branch of the new
+    -- (v0.2) body produces .Approve or .Reject.
     exfalso
     have hv1 : (verifySignal p).1 = .Resize n := by rw [hv]; exact hg1
-    cases hd : Strategy.decide
-        ⟨p.fundingRate, p.price, p.timestamp, p.openInterest, 0.0⟩ with
-    | none => simp [verifySignal, hd] at hv1
-    | some s =>
-      by_cases hdir : (s.direction == p.direction) = true
-      · cases hlist : Strategy.extractAssumptions s with
-        | nil => simp [verifySignal, hd, hdir, hlist] at hv1
-        | cons x xs => simp [verifySignal, hd, hdir, hlist] at hv1
-      · simp [verifySignal, hd, hdir] at hv1
+    unfold verifySignal at hv1
+    cases hsig : firingSignals (snapshotOf p) with
+    | nil => rw [hsig] at hv1; cases hv1
+    | cons s rest =>
+      rw [hsig] at hv1
+      by_cases hmc : mutuallyConsistent (s :: rest) = true
+      · simp only [hmc, if_true] at hv1
+        by_cases hdir : (s.direction == p.direction) = true
+        · simp only [hdir, if_true] at hv1
+          cases hlist : attachedAssumptions (snapshotOf p) p.direction with
+          | nil => rw [hlist] at hv1; cases hv1
+          | cons x xs => rw [hlist] at hv1; cases hv1
+        · simp only [hdir, if_false] at hv1; cases hv1
+      · have hmcf : mutuallyConsistent (s :: rest) = false := by
+          cases hval : mutuallyConsistent (s :: rest)
+          · rfl
+          · exact absurd hval hmc
+        simp only [hmcf, if_false] at hv1; cases hv1
   | Approve =>
     -- Gate 1 approved. Apply Gate 1 theorem.
     have hApprove : (verifySignal p).1 = .Approve := by

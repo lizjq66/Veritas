@@ -69,6 +69,15 @@ TOOLS = [
                 "price": {"type": "number", "description": "Current asset price in USD"},
                 "timestamp": {"type": "integer", "default": 0},
                 "open_interest": {"type": "number", "default": 0},
+                "spot_price": {
+                    "type": "number",
+                    "default": 0,
+                    "description": (
+                        "Concurrent spot price of the asset on a reference "
+                        "venue. Needed by basis-reversion. Set to 0 to "
+                        "indicate 'spot unknown' and skip basis checks."
+                    ),
+                },
                 "equity": {"type": "number", "description": "Caller's account equity in USD"},
                 "reliability": {
                     "type": "number",
@@ -185,6 +194,7 @@ def _handle_verify_proposal(args: dict) -> dict:
         price=float(args["price"]),
         timestamp=int(args.get("timestamp", 0)),
         open_interest=float(args.get("open_interest", 0.0)),
+        spot_price=float(args.get("spot_price", 0.0)),
     )
     constraints = AccountConstraints(
         equity=float(args["equity"]),

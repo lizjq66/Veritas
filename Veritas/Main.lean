@@ -282,14 +282,13 @@ private def handleExecutionQuality (args : List String) : IO UInt32 := do
 /-- Positional-argument form. A richer JSON entry point lives in
     `emit-certificate`. -/
 private def handleVerifySignal (args : List String) : IO UInt32 := do
-  match args with
-  | [dirS, frS, priceS, tsS, oiS, notionalS] =>
+  let parse := fun (dirS notionalS frS priceS tsS oiS spotS : String) => do
     match Direction.fromString? dirS with
-    | none => IO.eprintln s!"unknown direction: {dirS}"; return 1
+    | none => IO.eprintln s!"unknown direction: {dirS}"; return (1 : UInt32)
     | some dir =>
       let proposal : Gates.TradeProposal :=
         ⟨dir, strToFloat! notionalS, strToFloat! frS, strToFloat! priceS,
-         tsS.toNat!, strToFloat! oiS⟩
+         tsS.toNat!, strToFloat! oiS, strToFloat! spotS⟩
       let (verdict, assumptions) := Gates.verifySignal proposal
       IO.println (jsonObj [
         jsonStr "gate" "1",
@@ -297,8 +296,15 @@ private def handleVerifySignal (args : List String) : IO UInt32 := do
         s!"\"result\": {jsonVerdict verdict}",
         s!"\"assumptions\": {jsonAssumptions assumptions}"])
       return 0
+  match args with
+  -- v0.2+ form: spot_price explicit (7 args)
+  | [dirS, frS, priceS, tsS, oiS, notionalS, spotS] =>
+    parse dirS notionalS frS priceS tsS oiS spotS
+  -- v0.1 back-compat: no spot_price (6 args); default to 0.0
+  | [dirS, frS, priceS, tsS, oiS, notionalS] =>
+    parse dirS notionalS frS priceS tsS oiS "0.0"
   | _ =>
-    IO.eprintln "usage: veritas-core verify-signal <dir> <fr> <price> <ts> <oi> <notional>"
+    IO.eprintln "usage: veritas-core verify-signal <dir> <fr> <price> <ts> <oi> <notional> [spot_price]"
     return 1
 
 private def handleCheckConstraints (args : List String) : IO UInt32 := do
@@ -309,7 +315,7 @@ private def handleCheckConstraints (args : List String) : IO UInt32 := do
     | some dir =>
       -- Placeholders for fields not used by Gate 2 itself.
       let proposal : Gates.TradeProposal :=
-        ⟨dir, strToFloat! notionalS, 0.0, 0.0, 0, 0.0⟩
+        ⟨dir, strToFloat! notionalS, 0.0, 0.0, 0, 0.0, 0.0⟩
       let constraints : Gates.AccountConstraints :=
         ⟨strToFloat! equityS, strToFloat! maxFracS, strToFloat! maxLevS,
          strToFloat! stopPctS, strToFloat! relS, sampleS.toNat!⟩
@@ -340,7 +346,7 @@ private def handleCheckPortfolio (args : List String) : IO UInt32 := do
     | none => IO.eprintln s!"unknown direction: {dirS}"; return 1
     | some dir =>
       let proposal : Gates.TradeProposal :=
-        ⟨dir, strToFloat! notionalS, 0.0, 0.0, 0, 0.0⟩
+        ⟨dir, strToFloat! notionalS, 0.0, 0.0, 0, 0.0, 0.0⟩
       let port : Gates.Portfolio := ⟨[], strToFloat! maxFracS⟩
       let verdict := Gates.checkPortfolio proposal port (strToFloat! equityS)
       IO.println (jsonObj [
@@ -352,7 +358,7 @@ private def handleCheckPortfolio (args : List String) : IO UInt32 := do
     match Direction.fromString? dirS, Direction.fromString? exDirS with
     | some dir, some exDir =>
       let proposal : Gates.TradeProposal :=
-        ⟨dir, strToFloat! notionalS, 0.0, 0.0, 0, 0.0⟩
+        ⟨dir, strToFloat! notionalS, 0.0, 0.0, 0, 0.0, 0.0⟩
       let pos : Position :=
         ⟨exDir, strToFloat! exEpS, strToFloat! exSzS, 1.0, 5.0, 0, ""⟩
       let port : Gates.Portfolio := ⟨[pos], strToFloat! maxFracS⟩
@@ -382,9 +388,9 @@ private def handleClassifyExit (args : List String) : IO UInt32 :=
           <max_pos_frac> <stop_pct> <max_gross_frac>
           (none | one <exist_dir> <exist_ep> <exist_sz>) -/
 private def handleEmitCertificate (args : List String) : IO UInt32 := do
-  let parse := fun (core : List String) (port : Gates.Portfolio)
+  let parse := fun (port : Gates.Portfolio)
                    (dirStr : String) (notionalStr frStr priceStr : String)
-                   (tsStr oiStr : String)
+                   (tsStr oiStr spotStr : String)
                    (equityStr relStr sampleStr : String)
                    (maxLevStr maxFracStr stopPctStr : String) => do
     match Direction.fromString? dirStr with
@@ -392,7 +398,7 @@ private def handleEmitCertificate (args : List String) : IO UInt32 := do
     | some dir =>
       let proposal : Gates.TradeProposal :=
         ⟨dir, strToFloat! notionalStr, strToFloat! frStr, strToFloat! priceStr,
-         tsStr.toNat!, strToFloat! oiStr⟩
+         tsStr.toNat!, strToFloat! oiStr, strToFloat! spotStr⟩
       let constraints : Gates.AccountConstraints :=
         ⟨strToFloat! equityStr, strToFloat! maxFracStr, strToFloat! maxLevStr,
          strToFloat! stopPctStr, strToFloat! relStr, sampleStr.toNat!⟩
@@ -404,11 +410,23 @@ private def handleEmitCertificate (args : List String) : IO UInt32 := do
         s!"\"assumptions\": {jsonAssumptions cert.assumptions}",
         jsonNum "final_notional_usd" cert.finalNotionalUsd,
         jsonStr "approves" (if cert.approves then "true" else "false")])
-      let _ := core
       return 0
   match args with
+  -- v0.2+ form: spot_price after oi (15 args + "none" / 18 args + "one" ...)
+  | [d, n, fr, pr, ts, oi, sp, eq, rel, sam, lev, pfrac, stop, gfrac, "none"] =>
+    parse ⟨[], strToFloat! gfrac⟩ d n fr pr ts oi sp eq rel sam lev pfrac stop
+  | [d, n, fr, pr, ts, oi, sp, eq, rel, sam, lev, pfrac, stop, gfrac,
+     "one", exDirS, exEpS, exSzS] =>
+    match Direction.fromString? exDirS with
+    | none => IO.eprintln s!"unknown existing direction: {exDirS}"; return 1
+    | some exDir =>
+      let pos : Position :=
+        ⟨exDir, strToFloat! exEpS, strToFloat! exSzS, 1.0, 5.0, 0, ""⟩
+      let port : Gates.Portfolio := ⟨[pos], strToFloat! gfrac⟩
+      parse port d n fr pr ts oi sp eq rel sam lev pfrac stop
+  -- v0.1 back-compat: no spot_price
   | [d, n, fr, pr, ts, oi, eq, rel, sam, lev, pfrac, stop, gfrac, "none"] =>
-    parse [] ⟨[], strToFloat! gfrac⟩ d n fr pr ts oi eq rel sam lev pfrac stop
+    parse ⟨[], strToFloat! gfrac⟩ d n fr pr ts oi "0.0" eq rel sam lev pfrac stop
   | [d, n, fr, pr, ts, oi, eq, rel, sam, lev, pfrac, stop, gfrac,
      "one", exDirS, exEpS, exSzS] =>
     match Direction.fromString? exDirS with
@@ -417,9 +435,9 @@ private def handleEmitCertificate (args : List String) : IO UInt32 := do
       let pos : Position :=
         ⟨exDir, strToFloat! exEpS, strToFloat! exSzS, 1.0, 5.0, 0, ""⟩
       let port : Gates.Portfolio := ⟨[pos], strToFloat! gfrac⟩
-      parse [] port d n fr pr ts oi eq rel sam lev pfrac stop
+      parse port d n fr pr ts oi "0.0" eq rel sam lev pfrac stop
   | _ =>
-    IO.eprintln "usage: veritas-core emit-certificate <dir> <notional> <fr> <price> <ts> <oi> <equity> <reliability> <sample> <max_lev> <max_pos_frac> <stop_pct> <max_gross_frac> (none | one <exist_dir> <exist_ep> <exist_sz>)"
+    IO.eprintln "usage: veritas-core emit-certificate <dir> <notional> <fr> <price> <ts> <oi> <spot> <equity> <reliability> <sample> <max_lev> <max_pos_frac> <stop_pct> <max_gross_frac> (none | one <exist_dir> <exist_ep> <exist_sz>)"
     return 1
 
 -- ── Entry point ───────────────────────────────────────────────────

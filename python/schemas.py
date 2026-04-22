@@ -34,6 +34,10 @@ class TradeProposal:
     price: float
     timestamp: int
     open_interest: float = 0.0
+    spot_price: float = 0.0
+    """Concurrent spot price on the reference venue. Required by
+    strategies that look at the perp--spot basis; left at 0.0 means
+    'spot unknown' and such strategies will not fire."""
 
 
 @dataclass(frozen=True)
