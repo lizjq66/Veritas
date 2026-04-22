@@ -1,14 +1,13 @@
-"""End-to-end tests for certificate attestation (v0.3 slice 3).
+"""End-to-end tests for certificate attestation.
 
-Verifies: Ed25519 key management (env + ephemeral), canonical-JSON
-sign/verify round-trips, tamper detection, wrong-key rejection,
-unsupported-schema rejection, JSON wire format (slice-3 must not
-include ``request_digest``), and the full pipeline through the real
-Lean kernel — Verifier → signed Certificate → caller-side verify."""
+Covers schema v1 (slice 3 — provenance binding only) and schema v2
+(slice 4 — provenance + request-digest binding). v2 is the current
+emitted version; v1 must continue to verify forever."""
 
 from __future__ import annotations
 
 import base64
+import hashlib
 import logging
 from dataclasses import replace
 
@@ -22,14 +21,19 @@ from python.attestation import (
     Attestation,
     AttestationError,
     SigningKey,
+    _canonical_payload_v1,
+    canonical_json_bytes,
     compute_build_sha,
+    compute_request_digest,
     sign_certificate_body,
     verify_certificate,
 )
 from python.bridge import BINARY_PATH
 from python.schemas import (
     AccountConstraints,
+    CorrelationEntry,
     Portfolio,
+    PortfolioPosition,
     TradeProposal,
     Verdict,
 )
@@ -43,7 +47,6 @@ def test_signing_key_from_seed_deterministic():
     k1 = SigningKey.from_seed(seed)
     k2 = SigningKey.from_seed(seed)
     assert k1.public_key_b64 == k2.public_key_b64
-    # Same seed, same message → same signature (Ed25519 is deterministic).
     assert k1.sign(b"hello") == k2.sign(b"hello")
 
 
@@ -56,9 +59,8 @@ def test_signing_key_from_env_uses_env_seed(monkeypatch):
     seed = b"\x02" * 32
     monkeypatch.setenv("VERITAS_SIGNING_KEY",
                        base64.b64encode(seed).decode("ascii"))
-    k1 = SigningKey.from_env()
-    k2 = SigningKey.from_seed(seed)
-    assert k1.public_key_b64 == k2.public_key_b64
+    assert (SigningKey.from_env().public_key_b64
+            == SigningKey.from_seed(seed).public_key_b64)
 
 
 def test_signing_key_from_env_rejects_bad_base64(monkeypatch):
@@ -75,7 +77,7 @@ def test_signing_key_from_env_ephemeral_when_unset(monkeypatch, caplog):
     assert any("ephemeral" in r.message.lower() for r in caplog.records)
 
 
-# ── sign / verify: round trip and failure modes ───────────────────
+# ── Sign / verify round trip (v2 — current) ───────────────────────
 
 def _body() -> dict:
     return {"gate1": {"verdict": "approve"},
@@ -86,105 +88,198 @@ def _body() -> dict:
             "approves": True}
 
 
-def test_sign_then_verify_roundtrip():
+_DUMMY_DIGEST = "0" * 64  # valid hex sha256 shape but arbitrary content
+
+
+def test_sign_v2_round_trip():
     key = SigningKey.from_seed(b"\x03" * 32)
-    att = sign_certificate_body(_body(), signing_key=key, build_sha="abc123")
-    assert att.schema_version == CURRENT_SCHEMA_VERSION
-    assert att.build_sha == "abc123"
-    assert att.public_key == key.public_key_b64
-    assert att.signature  # non-empty
-    verify_certificate(_body(), att)  # must not raise
+    att = sign_certificate_body(
+        _body(), signing_key=key, build_sha="abc",
+        request_digest=_DUMMY_DIGEST,
+    )
+    assert att.schema_version == 2
+    assert att.request_digest == _DUMMY_DIGEST
+    verify_certificate(_body(), att, expected_request_digest=_DUMMY_DIGEST)
 
 
-def test_verify_rejects_tampered_body():
+def test_verify_v2_rejects_tampered_body():
     key = SigningKey.from_seed(b"\x04" * 32)
-    att = sign_certificate_body(_body(), signing_key=key, build_sha="abc")
+    att = sign_certificate_body(
+        _body(), signing_key=key, build_sha="abc",
+        request_digest=_DUMMY_DIGEST,
+    )
     tampered = {**_body(), "approves": False}
     with pytest.raises(AttestationError, match="does not verify"):
-        verify_certificate(tampered, att)
+        verify_certificate(tampered, att, expected_request_digest=_DUMMY_DIGEST)
 
 
-def test_verify_rejects_tampered_attestation_field():
-    key = SigningKey.from_seed(b"\x0a" * 32)
-    att = sign_certificate_body(_body(), signing_key=key, build_sha="abc")
-    # Swap build_sha post-sign: signed payload now disagrees with what
-    # the verifier reconstructs from the tampered attestation → reject.
-    tampered = replace(att, build_sha="different_build")
-    with pytest.raises(AttestationError, match="does not verify"):
-        verify_certificate(_body(), tampered)
-
-
-def test_verify_rejects_wrong_expected_public_key():
+def test_verify_v2_rejects_tampered_request_digest_field():
     key = SigningKey.from_seed(b"\x05" * 32)
-    other = SigningKey.from_seed(b"\x06" * 32)
-    att = sign_certificate_body(_body(), signing_key=key, build_sha="abc")
+    att = sign_certificate_body(
+        _body(), signing_key=key, build_sha="abc",
+        request_digest=_DUMMY_DIGEST,
+    )
+    tampered = replace(att, request_digest="f" * 64)
+    # The signature signed _DUMMY_DIGEST, not "f"*64; even if the
+    # caller's expectation now agrees with the tampered field, the
+    # cryptographic verify fails.
+    with pytest.raises(AttestationError, match="does not verify"):
+        verify_certificate(_body(), tampered,
+                           expected_request_digest="f" * 64)
+
+
+def test_verify_v2_rejects_mismatched_expected_digest():
+    key = SigningKey.from_seed(b"\x06" * 32)
+    att = sign_certificate_body(
+        _body(), signing_key=key, build_sha="abc",
+        request_digest=_DUMMY_DIGEST,
+    )
+    with pytest.raises(AttestationError, match="does not match expected"):
+        verify_certificate(_body(), att,
+                           expected_request_digest="1" * 64)
+
+
+def test_verify_v2_rejects_missing_expected_request_digest():
+    key = SigningKey.from_seed(b"\x07" * 32)
+    att = sign_certificate_body(
+        _body(), signing_key=key, build_sha="abc",
+        request_digest=_DUMMY_DIGEST,
+    )
+    with pytest.raises(AttestationError,
+                       match="requires expected_request_digest"):
+        verify_certificate(_body(), att)
+
+
+def test_verify_v2_rejects_attestation_missing_request_digest_field():
+    # Impossible to produce via sign_certificate_body but could arise
+    # from a malformed incoming attestation — we must reject explicitly.
+    key = SigningKey.from_seed(b"\x08" * 32)
+    att = sign_certificate_body(
+        _body(), signing_key=key, build_sha="abc",
+        request_digest=_DUMMY_DIGEST,
+    )
+    broken = replace(att, request_digest=None)
+    with pytest.raises(AttestationError, match="missing request_digest"):
+        verify_certificate(_body(), broken,
+                           expected_request_digest=_DUMMY_DIGEST)
+
+
+def test_verify_v2_rejects_wrong_expected_public_key():
+    key = SigningKey.from_seed(b"\x09" * 32)
+    other = SigningKey.from_seed(b"\x0a" * 32)
+    att = sign_certificate_body(
+        _body(), signing_key=key, build_sha="abc",
+        request_digest=_DUMMY_DIGEST,
+    )
     with pytest.raises(AttestationError, match="does not match expected key"):
         verify_certificate(_body(), att,
-                           expected_public_key=other.public_key_b64)
-
-
-def test_verify_accepts_matching_expected_public_key():
-    key = SigningKey.from_seed(b"\x07" * 32)
-    att = sign_certificate_body(_body(), signing_key=key, build_sha="abc")
-    verify_certificate(_body(), att, expected_public_key=key.public_key_b64)
+                           expected_public_key=other.public_key_b64,
+                           expected_request_digest=_DUMMY_DIGEST)
 
 
 def test_verify_rejects_unsupported_schema_version():
     att = Attestation(
         schema_version=999,
-        veritas_version="0.3.3",
-        build_sha="abc", public_key="pk",
-        signed_at="2026-04-22T18:00:00Z",
-        signature="sig",
+        veritas_version="x", build_sha="x", public_key="pk",
+        signed_at="2026-04-22T18:00:00Z", signature="sig",
     )
     with pytest.raises(AttestationError, match="unsupported schema_version"):
         verify_certificate(_body(), att)
 
 
 def test_current_schema_version_is_supported():
-    # Contract: whatever CURRENT_SCHEMA_VERSION we emit must be in the
-    # supported set (so we can verify our own output).
     assert CURRENT_SCHEMA_VERSION in SUPPORTED_SCHEMA_VERSIONS
 
 
-# ── Forward-compat: slice-3 JSON must NOT carry request_digest ─────
+def test_current_schema_version_is_v2():
+    # Regression guard: slice 4 bumped emission to v2. If this ever
+    # drops back to 1 without a schema bump it's a bug.
+    assert CURRENT_SCHEMA_VERSION == 2
 
-def test_attestation_json_omits_null_request_digest():
-    key = SigningKey.from_seed(b"\x08" * 32)
-    att = sign_certificate_body(_body(), signing_key=key, build_sha="x")
+
+# ── Schema v1 backward compat ─────────────────────────────────────
+
+def _manually_sign_v1(
+    body: dict,
+    key: SigningKey,
+    build_sha: str = "legacy_v1_build",
+    veritas_version: str = "0.3.3",
+    signed_at: str = "2026-04-20T00:00:00Z",
+) -> Attestation:
+    """Simulate an attestation issued by the slice-3 Verifier.
+
+    Goes straight to _canonical_payload_v1 so we can exercise the
+    v1 verification path in a post-v2 world. Mirrors what slice-3
+    sign_certificate_body used to produce before this slice bumped
+    CURRENT_SCHEMA_VERSION to 2."""
+    payload = _canonical_payload_v1(
+        schema_version=1, veritas_version=veritas_version,
+        build_sha=build_sha, public_key=key.public_key_b64,
+        signed_at=signed_at, certificate_body=body,
+    )
+    return Attestation(
+        schema_version=1, veritas_version=veritas_version,
+        build_sha=build_sha, public_key=key.public_key_b64,
+        signed_at=signed_at,
+        signature=base64.b64encode(key.sign(payload)).decode("ascii"),
+    )
+
+
+def test_v1_attestation_still_verifies_under_v2_codepath():
+    """Slice-3-era certs must remain verifiable indefinitely."""
+    key = SigningKey.from_seed(b"\xaa" * 32)
+    att = _manually_sign_v1(_body(), key)
+    assert att.schema_version == 1
+    # No expected_request_digest needed for v1 — the argument is ignored.
+    verify_certificate(_body(), att)
+
+
+def test_v1_verify_ignores_expected_request_digest():
+    key = SigningKey.from_seed(b"\xab" * 32)
+    att = _manually_sign_v1(_body(), key)
+    # Even if the caller passes one (say, out of habit), v1 does not
+    # bind to inputs and thus does not consult it.
+    verify_certificate(_body(), att, expected_request_digest=_DUMMY_DIGEST)
+
+
+def test_v1_verify_rejects_tampered_body():
+    key = SigningKey.from_seed(b"\xac" * 32)
+    att = _manually_sign_v1(_body(), key)
+    with pytest.raises(AttestationError, match="does not verify"):
+        verify_certificate({**_body(), "approves": False}, att)
+
+
+# ── JSON wire format ──────────────────────────────────────────────
+
+def test_v2_attestation_json_includes_request_digest():
+    key = SigningKey.from_seed(b"\x0b" * 32)
+    att = sign_certificate_body(
+        _body(), signing_key=key, build_sha="x",
+        request_digest=_DUMMY_DIGEST,
+    )
+    d = att.to_json()
+    assert d["schema_version"] == 2
+    assert d["request_digest"] == _DUMMY_DIGEST
+
+
+def test_v1_attestation_json_omits_null_request_digest():
+    key = SigningKey.from_seed(b"\x0c" * 32)
+    att = _manually_sign_v1(_body(), key)
     d = att.to_json()
     assert "request_digest" not in d
     assert d["schema_version"] == 1
 
 
-def test_attestation_from_json_tolerates_future_request_digest():
-    # Forward-compat: a future schema v2 cert might include request_digest.
-    # from_json for v1 must at least not crash on its presence.
-    key = SigningKey.from_seed(b"\x09" * 32)
-    att = sign_certificate_body(_body(), signing_key=key, build_sha="x")
-    d = att.to_json()
-    d["request_digest"] = "0" * 64  # simulate future field
-    att2 = Attestation.from_json(d)
-    assert att2.request_digest == "0" * 64
-
-
 def test_attestation_roundtrip_through_json():
-    key = SigningKey.from_seed(b"\x0b" * 32)
-    att = sign_certificate_body(_body(), signing_key=key, build_sha="x")
-    att2 = Attestation.from_json(att.to_json())
-    assert att2 == att
+    key = SigningKey.from_seed(b"\x0d" * 32)
+    att = sign_certificate_body(
+        _body(), signing_key=key, build_sha="x",
+        request_digest=_DUMMY_DIGEST,
+    )
+    assert Attestation.from_json(att.to_json()) == att
 
 
-# ── Certificate-level e2e through the real Lean kernel ────────────
-
-@pytest.fixture
-def verifier(monkeypatch) -> Verifier:
-    """Deterministic signing key so test assertions about public_key
-    are stable across runs."""
-    seed = base64.b64encode(b"\x42" * 32).decode("ascii")
-    monkeypatch.setenv("VERITAS_SIGNING_KEY", seed)
-    return Verifier()
-
+# ── compute_request_digest ────────────────────────────────────────
 
 def _proposal() -> TradeProposal:
     return TradeProposal(
@@ -200,60 +295,158 @@ def _constraints() -> AccountConstraints:
     )
 
 
-def test_verifier_returns_certificate_with_attestation(verifier):
-    cert = verifier.verify(_proposal(), _constraints())
-    assert cert.attestation is not None
-    assert cert.attestation.schema_version == CURRENT_SCHEMA_VERSION
-    assert cert.attestation.public_key == verifier.public_key
-    assert cert.attestation.build_sha == verifier.build_sha
+def test_compute_request_digest_deterministic():
+    d1 = compute_request_digest(_proposal(), _constraints(), Portfolio())
+    d2 = compute_request_digest(_proposal(), _constraints(), Portfolio())
+    assert d1 == d2
+    assert len(d1) == 64  # hex sha256
+    int(d1, 16)  # parses as hex
 
 
-def test_certificate_attestation_verifies(verifier):
+def test_compute_request_digest_sensitive_to_proposal():
+    d1 = compute_request_digest(_proposal(), _constraints(), Portfolio())
+    other = TradeProposal(
+        direction="SHORT", notional_usd=1500.0,
+        funding_rate=-0.0008, price=68000.0, timestamp=0,
+    )
+    d2 = compute_request_digest(other, _constraints(), Portfolio())
+    assert d1 != d2
+
+
+def test_compute_request_digest_sensitive_to_constraints():
+    d1 = compute_request_digest(_proposal(), _constraints(), Portfolio())
+    d2 = compute_request_digest(
+        _proposal(),
+        replace(_constraints(), equity=20000.0),
+        Portfolio(),
+    )
+    assert d1 != d2
+
+
+def test_compute_request_digest_sensitive_to_portfolio():
+    d1 = compute_request_digest(_proposal(), _constraints(), Portfolio())
+    port = Portfolio(
+        positions=(PortfolioPosition(
+            direction="LONG", entry_price=68000.0, size=0.01),),
+    )
+    d2 = compute_request_digest(_proposal(), _constraints(), port)
+    assert d1 != d2
+
+
+def test_compute_request_digest_treats_none_and_empty_portfolio_differently():
+    # A caller that passes None should not accidentally collide with
+    # one that passes Portfolio() — they go through different code
+    # paths on the Verifier side too.
+    d_none = compute_request_digest(_proposal(), _constraints(), None)
+    d_empty = compute_request_digest(_proposal(), _constraints(), Portfolio())
+    assert d_none != d_empty
+
+
+def test_compute_request_digest_accepts_plain_dicts():
+    # Advanced callers (non-Python SDKs) might rebuild the dict shape
+    # manually. As long as the dict matches asdict(schema), the digest
+    # must match.
+    from dataclasses import asdict
+    p = _proposal()
+    c = _constraints()
+    port = Portfolio()
+    d_dataclass = compute_request_digest(p, c, port)
+    d_dict = compute_request_digest(asdict(p), asdict(c), asdict(port))
+    assert d_dataclass == d_dict
+
+
+# ── Certificate-level e2e through the real Lean kernel ────────────
+
+@pytest.fixture
+def verifier(monkeypatch) -> Verifier:
+    seed = base64.b64encode(b"\x42" * 32).decode("ascii")
+    monkeypatch.setenv("VERITAS_SIGNING_KEY", seed)
+    return Verifier()
+
+
+def test_verifier_returns_v2_attestation_with_request_digest(verifier):
     cert = verifier.verify(_proposal(), _constraints())
-    verify_certificate(cert.body_json(), cert.attestation)
+    att = cert.attestation
+    assert att is not None
+    assert att.schema_version == 2
+    assert att.public_key == verifier.public_key
+    assert att.build_sha == verifier.build_sha
+    assert att.request_digest is not None
+    assert len(att.request_digest) == 64
+
+
+def test_caller_can_verify_roundtrip_via_compute_request_digest(verifier):
+    p, c = _proposal(), _constraints()
+    cert = verifier.verify(p, c)
+    digest = compute_request_digest(p, c, Portfolio())
+    verify_certificate(
+        cert.body_json(), cert.attestation,
+        expected_request_digest=digest,
+    )
+
+
+def test_replay_to_different_proposal_fails(verifier):
+    """The signature bound to proposal X cannot be reused as proof
+    of a different proposal Y."""
+    p_x, c = _proposal(), _constraints()
+    cert = verifier.verify(p_x, c)
+    # Attacker tries to replay cert for an unrelated proposal.
+    p_y = TradeProposal(
+        direction="SHORT", notional_usd=5000.0,
+        funding_rate=-0.0008, price=2000.0, timestamp=1,
+    )
+    digest_y = compute_request_digest(p_y, c, Portfolio())
+    with pytest.raises(AttestationError, match="does not match expected"):
+        verify_certificate(
+            cert.body_json(), cert.attestation,
+            expected_request_digest=digest_y,
+        )
 
 
 def test_certificate_attestation_fails_after_verdict_tamper(verifier):
-    cert = verifier.verify(_proposal(), _constraints())
+    p, c = _proposal(), _constraints()
+    cert = verifier.verify(p, c)
     tampered = replace(
         cert, gate1=Verdict(tag="reject", reason_codes=("synthetic",)),
     )
+    digest = compute_request_digest(p, c, Portfolio())
     with pytest.raises(AttestationError):
-        verify_certificate(tampered.body_json(), cert.attestation)
+        verify_certificate(
+            tampered.body_json(), cert.attestation,
+            expected_request_digest=digest,
+        )
 
 
 def test_verifier_build_sha_matches_compiled_binary(verifier):
-    # Sanity: what Verifier attests in signatures is what you'd get
-    # by hashing the binary on disk.
     expected = compute_build_sha(BINARY_PATH)
     cert = verifier.verify(_proposal(), _constraints())
-    assert cert.attestation.build_sha == expected
-    assert verifier.build_sha == expected
+    assert cert.attestation.build_sha == expected == verifier.build_sha
 
 
 def test_opt_out_of_signing_produces_no_attestation():
     v = Verifier(sign_certificates=False)
-    assert v.public_key is None
-    assert v.build_sha is None
+    assert v.public_key is None and v.build_sha is None
     cert = v.verify(_proposal(), _constraints())
     assert cert.attestation is None
 
 
 def test_certificate_json_roundtrip_preserves_attestation(verifier):
-    cert = verifier.verify(_proposal(), _constraints())
+    p, c = _proposal(), _constraints()
+    cert = verifier.verify(p, c)
     from python.schemas import Certificate
     cert2 = Certificate.from_json(cert.to_json())
     assert cert2.attestation == cert.attestation
-    # And the reconstructed cert still verifies.
-    verify_certificate(cert2.body_json(), cert2.attestation)
+    verify_certificate(
+        cert2.body_json(), cert2.attestation,
+        expected_request_digest=compute_request_digest(p, c, Portfolio()),
+    )
 
 
-# ── HTTP: GET /verify/pubkey ──────────────────────────────────────
+# ── HTTP: GET /verify/pubkey and /verify/proposal integration ─────
 
 def test_pubkey_endpoint_returns_current_key(monkeypatch):
     seed = base64.b64encode(b"\x55" * 32).decode("ascii")
     monkeypatch.setenv("VERITAS_SIGNING_KEY", seed)
-    # Force a fresh Verifier so it picks up the patched env.
     verify_route._verifier = None
 
     from python.api.server import app
@@ -262,41 +455,44 @@ def test_pubkey_endpoint_returns_current_key(monkeypatch):
     assert r.status_code == 200
     d = r.json()
     assert d["algorithm"] == "ed25519"
-    assert d["schema_version"] == CURRENT_SCHEMA_VERSION
+    assert d["schema_version"] == CURRENT_SCHEMA_VERSION == 2
     assert len(base64.b64decode(d["public_key"])) == 32
-    assert len(d["build_sha"]) == 64  # sha256 hex
-    # And the key it advertises matches what signs real certs.
-    r2 = client.post("/verify/proposal", json={
-        "proposal": {"direction": "LONG", "notional_usd": 1500.0,
-                     "funding_rate": 0.0012, "price": 68000.0},
-        "constraints": {"equity": 10000.0, "reliability": 0.8,
-                        "sample_size": 20},
-        "portfolio": None,
-    })
-    assert r2.status_code == 200
-    assert r2.json()["attestation"]["public_key"] == d["public_key"]
-    assert r2.json()["attestation"]["build_sha"] == d["build_sha"]
+    assert len(d["build_sha"]) == 64
 
 
-def test_verify_proposal_response_includes_attestation(monkeypatch):
+def test_http_verify_proposal_returns_v2_attestation(monkeypatch):
     seed = base64.b64encode(b"\x66" * 32).decode("ascii")
     monkeypatch.setenv("VERITAS_SIGNING_KEY", seed)
     verify_route._verifier = None
 
     from python.api.server import app
     client = TestClient(app)
+    proposal_body = {"direction": "LONG", "notional_usd": 1500.0,
+                     "funding_rate": 0.0012, "price": 68000.0}
+    constraints_body = {"equity": 10000.0, "reliability": 0.8,
+                        "sample_size": 20}
     r = client.post("/verify/proposal", json={
-        "proposal": {"direction": "LONG", "notional_usd": 1500.0,
-                     "funding_rate": 0.0012, "price": 68000.0},
-        "constraints": {"equity": 10000.0, "reliability": 0.8,
-                        "sample_size": 20},
+        "proposal": proposal_body,
+        "constraints": constraints_body,
         "portfolio": None,
     })
     assert r.status_code == 200
-    att = r.json().get("attestation")
+    d = r.json()
+    att = d.get("attestation")
     assert att is not None
-    assert att["schema_version"] == CURRENT_SCHEMA_VERSION
-    assert "signature" in att
-    # Caller can verify end-to-end against the HTTP response bytes.
-    body = {k: v for k, v in r.json().items() if k != "attestation"}
-    verify_certificate(body, Attestation.from_json(att))
+    assert att["schema_version"] == 2
+    assert "request_digest" in att
+
+    # Caller reconstructs inputs and verifies end-to-end.
+    from python.api.routes.verify import (
+        _to_constraints, _to_portfolio, _to_proposal, ProposalIn,
+        ConstraintsIn,
+    )
+    p = _to_proposal(ProposalIn(**proposal_body))
+    c = _to_constraints(ConstraintsIn(**constraints_body))
+    digest = compute_request_digest(p, c, Portfolio())
+    body = {k: v for k, v in d.items() if k != "attestation"}
+    verify_certificate(
+        body, Attestation.from_json(att),
+        expected_request_digest=digest,
+    )

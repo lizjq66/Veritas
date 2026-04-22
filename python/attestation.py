@@ -25,20 +25,28 @@ future direction, not this slice.
 The attestation schema is versioned via ``schema_version: int``. Each
 version fixes a canonical signed-payload shape:
 
-    v1 (this slice):
+    v1 (slice 3):
         signed_payload = {
             schema_version, veritas_version, build_sha, public_key,
             signed_at, certificate_body
         }
 
-Future slices will BUMP ``schema_version`` (not silently extend v1).
+    v2 (slice 4, current):
+        signed_payload = {
+            schema_version, veritas_version, build_sha, public_key,
+            signed_at, certificate_body, request_digest
+        }
+        where request_digest = hex sha256 of canonical JSON of
+        {proposal, constraints, portfolio} as submitted. This binds
+        the signature to specific inputs and defeats replay of a
+        valid certificate against a different proposal.
+
 Each version's ``_canonical_payload_vN`` and verification branch are
 FROZEN for their lifetime — old certificates must remain verifiable
-by newer Verifier versions. Slice 4 is planned to add
-``request_digest`` (binding the signature to the specific input
-proposal / constraints / portfolio); it will appear as a new
-``schema_version = 2`` with its own canonical payload and will coexist
-with v1 rather than replace it.
+by newer Verifier versions. ``CURRENT_SCHEMA_VERSION`` is what new
+signings emit; ``SUPPORTED_SCHEMA_VERSIONS`` is what verification will
+accept. The two diverge for exactly one reason: to carry v1 cert
+compatibility forward after we stop emitting them.
 
 ## Canonicalization
 
@@ -60,7 +68,7 @@ import hashlib
 import json
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -81,14 +89,14 @@ log = logging.getLogger("veritas.attestation")
 
 # Schema versions supported by this build. Must list every version for
 # which this module can run a valid verification path. Append-only.
-SUPPORTED_SCHEMA_VERSIONS: tuple[int, ...] = (1,)
+SUPPORTED_SCHEMA_VERSIONS: tuple[int, ...] = (1, 2)
 
 # The schema version this build EMITS when signing. Callers verifying
 # older certs go through whichever _canonical_payload_vN matches.
-CURRENT_SCHEMA_VERSION: int = 1
+CURRENT_SCHEMA_VERSION: int = 2
 
 # Semver of the Veritas release. Independent of schema_version.
-VERITAS_VERSION: str = "0.3.3"
+VERITAS_VERSION: str = "0.3.4"
 
 
 # ── Canonical JSON ──────────────────────────────────────────────
@@ -113,6 +121,45 @@ def compute_build_sha(binary_path: Path | str) -> str:
         for chunk in iter(lambda: f.read(65536), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+# ── Request digest (schema v2) ──────────────────────────────────
+
+def _normalize_input(x: Any) -> Any:
+    """Normalize a dataclass/None/dict into a plain JSON-able shape.
+
+    Used to build the request digest so that callers passing either
+    schema dataclasses (TradeProposal, AccountConstraints, Portfolio)
+    or raw dicts get the same bytes."""
+    if x is None:
+        return None
+    if is_dataclass(x):
+        return asdict(x)
+    return x
+
+
+def compute_request_digest(
+    proposal: Any,
+    constraints: Any,
+    portfolio: Any | None = None,
+) -> str:
+    """Return hex sha256 of the canonical JSON of the request tuple
+    ``{proposal, constraints, portfolio}``.
+
+    This is what a schema v2 Attestation binds to. A caller verifies
+    a returned certificate by recomputing this digest from its own
+    copy of the submitted inputs and passing it as
+    ``expected_request_digest`` to :func:`verify_certificate`.
+
+    Inputs may be either the Veritas schema dataclasses or already-
+    normalized dicts; both produce the same digest as long as the
+    fields match."""
+    data = {
+        "proposal": _normalize_input(proposal),
+        "constraints": _normalize_input(constraints),
+        "portfolio": _normalize_input(portfolio),
+    }
+    return hashlib.sha256(canonical_json_bytes(data)).hexdigest()
 
 
 # ── Signing key ─────────────────────────────────────────────────
@@ -226,12 +273,13 @@ class AttestationError(ValueError):
     """Raised when an attestation fails verification."""
 
 
-# ── Canonical payload, schema v1 ────────────────────────────────
+# ── Canonical payloads (each vN is FROZEN) ──────────────────────
 #
-# THIS FUNCTION IS FROZEN for schema_version=1. To change the signed
-# payload shape, add a new ``_canonical_payload_vN`` for a new schema
-# version — do NOT modify this one. Modifying it would invalidate
-# every attestation ever issued under v1.
+# Rule: once ``_canonical_payload_vN`` ships, its body MUST NOT change.
+# Changing it would silently invalidate every attestation ever issued
+# under that schema version. Add ``_canonical_payload_v(N+1)`` with
+# whatever shape you want next; wire it into sign/verify dispatch;
+# leave prior versions untouched.
 
 def _canonical_payload_v1(
     *,
@@ -252,28 +300,55 @@ def _canonical_payload_v1(
     })
 
 
+def _canonical_payload_v2(
+    *,
+    schema_version: int,
+    veritas_version: str,
+    build_sha: str,
+    public_key: str,
+    signed_at: str,
+    certificate_body: dict,
+    request_digest: str,
+) -> bytes:
+    return canonical_json_bytes({
+        "schema_version": schema_version,
+        "veritas_version": veritas_version,
+        "build_sha": build_sha,
+        "public_key": public_key,
+        "signed_at": signed_at,
+        "certificate_body": certificate_body,
+        "request_digest": request_digest,
+    })
+
+
 # ── Sign / verify (dispatch by schema version) ──────────────────
 
 def sign_certificate_body(
     certificate_body: dict,
     signing_key: SigningKey,
     build_sha: str,
+    request_digest: str,
     veritas_version: str = VERITAS_VERSION,
     now: datetime | None = None,
 ) -> Attestation:
-    """Sign a certificate body and return an ``Attestation`` (schema v1).
+    """Sign a certificate body and return an ``Attestation`` at the
+    current schema version (v2: includes ``request_digest`` binding).
 
     ``certificate_body`` is the certificate's JSON dict EXCLUDING the
-    ``attestation`` field (see ``Certificate.body_json()``)."""
+    ``attestation`` field (see ``Certificate.body_json()``).
+    ``request_digest`` is the hex sha256 of the canonical JSON of
+    the submitted ``(proposal, constraints, portfolio)``; compute it
+    via :func:`compute_request_digest`."""
     ts = (now or datetime.now(timezone.utc))
     signed_at = ts.replace(microsecond=0).isoformat().replace("+00:00", "Z")
-    payload = _canonical_payload_v1(
+    payload = _canonical_payload_v2(
         schema_version=CURRENT_SCHEMA_VERSION,
         veritas_version=veritas_version,
         build_sha=build_sha,
         public_key=signing_key.public_key_b64,
         signed_at=signed_at,
         certificate_body=certificate_body,
+        request_digest=request_digest,
     )
     sig = signing_key.sign(payload)
     return Attestation(
@@ -283,6 +358,7 @@ def sign_certificate_body(
         public_key=signing_key.public_key_b64,
         signed_at=signed_at,
         signature=base64.b64encode(sig).decode("ascii"),
+        request_digest=request_digest,
     )
 
 
@@ -291,12 +367,23 @@ def verify_certificate(
     attestation: Attestation,
     *,
     expected_public_key: str | None = None,
+    expected_request_digest: str | None = None,
 ) -> None:
     """Verify an attestation against a certificate body.
 
     Raises ``AttestationError`` on any failure; returns ``None`` on
-    success. If ``expected_public_key`` (base64) is provided, also
-    asserts the attestation was produced by that specific key."""
+    success.
+
+    ``expected_public_key`` (base64): if provided, asserts the
+    attestation was produced by that specific key.
+
+    ``expected_request_digest`` (hex sha256): REQUIRED for schema v2
+    attestations. The caller recomputes this from their own copy of
+    the inputs using :func:`compute_request_digest` and passes it
+    here; any mismatch (or omission) fails verification. This is the
+    replay-protection guarantee v2 exists to provide — there is
+    deliberately no opt-out. For schema v1 attestations the argument
+    is ignored."""
     if attestation.schema_version not in SUPPORTED_SCHEMA_VERSIONS:
         raise AttestationError(
             f"unsupported schema_version {attestation.schema_version}; "
@@ -324,6 +411,31 @@ def verify_certificate(
             public_key=attestation.public_key,
             signed_at=attestation.signed_at,
             certificate_body=certificate_body,
+        )
+    elif attestation.schema_version == 2:
+        if attestation.request_digest is None:
+            raise AttestationError(
+                "schema v2 attestation is missing request_digest"
+            )
+        if expected_request_digest is None:
+            raise AttestationError(
+                "schema v2 attestation requires expected_request_digest; "
+                "compute via compute_request_digest(proposal, constraints, "
+                "portfolio) and pass it in"
+            )
+        if expected_request_digest != attestation.request_digest:
+            raise AttestationError(
+                "request_digest does not match expected (replay attempt "
+                "or input mismatch)"
+            )
+        payload = _canonical_payload_v2(
+            schema_version=attestation.schema_version,
+            veritas_version=attestation.veritas_version,
+            build_sha=attestation.build_sha,
+            public_key=attestation.public_key,
+            signed_at=attestation.signed_at,
+            certificate_body=certificate_body,
+            request_digest=attestation.request_digest,
         )
     else:
         raise AttestationError(

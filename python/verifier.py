@@ -36,6 +36,7 @@ from pathlib import Path
 from python.attestation import (
     SigningKey,
     compute_build_sha,
+    compute_request_digest,
     sign_certificate_body,
 )
 from python.bridge import VeritasCore
@@ -138,9 +139,11 @@ class Verifier:
         cert = Certificate.from_json(obj)
         if not self._sign:
             return cert
+        request_digest = compute_request_digest(proposal, constraints, port)
         attestation = sign_certificate_body(
             cert.body_json(),
             signing_key=self._signing_key,
             build_sha=self._build_sha,
+            request_digest=request_digest,
         )
         return replace(cert, attestation=attestation)
