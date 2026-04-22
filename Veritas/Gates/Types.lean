@@ -33,6 +33,10 @@ structure TradeProposal where
   /-- Asset symbol. Gate 3 uses this for same-asset direction checks
       and cross-asset correlation weighting. -/
   asset : String := ""
+  /-- Caller-supplied estimate of daily return volatility for the
+      proposed asset (fraction; 0 if unknown). Paired with
+      `AccountConstraints.dailyVarLimit` in Gate 3's VaR check. -/
+  volatility : Rat := 0
   deriving Repr, Inhabited
 
 /-- Account-level constraints a proposal must satisfy. All numeric
@@ -45,6 +49,13 @@ structure AccountConstraints where
   /-- Reliability of the assumption(s) backing the proposal (0 ≤ r ≤ 1). -/
   reliability : Rat
   sampleSize : Nat
+  /-- Daily Value-at-Risk budget in USD. Gate 3 rejects the proposal
+      when the linear-VaR upper bound (sum of |notional| × volatility,
+      correlation-weighted across existing positions plus the new
+      proposal) exceeds this limit. Default 0 disables the VaR check
+      entirely and preserves the v0.2 behavior where only the
+      gross-exposure cap is enforced. -/
+  dailyVarLimit : Rat := 0
   deriving Repr, Inhabited
 
 /-- One entry in the portfolio correlation table. Gate 3 uses

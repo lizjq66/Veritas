@@ -82,6 +82,13 @@ structure Position where
   entryTimestamp : Nat
   assumptionName : String
   asset : String := ""
+  /-- Caller-supplied estimate of the position's daily return
+      volatility, as an exact rational fraction (e.g. 3/100 for 3%).
+      Used by Gate 3's linear-VaR-bound check. Default 0 means
+      "volatility unknown, don't count toward VaR"; the gate's VaR
+      check is skipped entirely when the account's `dailyVarLimit`
+      is 0. -/
+  volatility : Rat := 0
   deriving Repr, Inhabited
 
 /-- The result of monitoring: should we exit, and why? -/

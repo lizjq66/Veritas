@@ -63,10 +63,18 @@ class Verifier:
         return Verdict.from_json(obj["result"])
 
     def check_portfolio(
-        self, p: TradeProposal, port: Portfolio, equity: float
+        self,
+        p: TradeProposal,
+        port: Portfolio,
+        equity: float,
+        daily_var_limit: float = 0.0,
     ) -> Verdict:
-        """Gate 3: portfolio interference."""
-        obj = self._core.check_portfolio(p, port, equity)
+        """Gate 3: portfolio interference.
+
+        ``daily_var_limit`` (default 0.0) enables the linear-VaR upper-bound
+        check when set to a positive value. Leaving it at 0 preserves the
+        v0.2 single-check behavior (gross-exposure cap only)."""
+        obj = self._core.check_portfolio(p, port, equity, daily_var_limit)
         return Verdict.from_json(obj["result"])
 
     # ── Combined ─────────────────────────────────────────────────

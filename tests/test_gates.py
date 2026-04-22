@@ -398,6 +398,105 @@ def test_gate3_same_asset_opposite_direction_still_rejected(verifier):
     assert "direction_conflicts_existing_position" in verdict.reason_codes
 
 
+# ── Gate 3: linear VaR upper-bound check (v0.3 Slice 2) ──────────
+
+def test_gate3_var_limit_zero_disables_check(verifier):
+    """daily_var_limit=0 (default) preserves v0.2 single-check behavior.
+    A very high volatility would blow any positive limit, yet here the
+    check is skipped entirely."""
+    proposal = TradeProposal(
+        direction="LONG", notional_usd=1000.0,
+        funding_rate=0.0012, price=68000.0, timestamp=0,
+        volatility=0.5,
+    )
+    verdict = verifier.check_portfolio(
+        proposal, Portfolio(), equity=10000.0, daily_var_limit=0.0,
+    )
+    assert verdict.tag == "approve"
+
+
+def test_gate3_var_limit_approves_under(verifier):
+    """Proposal-only bound = $1000 * 0.03 = $30. Limit $100 → approve."""
+    proposal = TradeProposal(
+        direction="LONG", notional_usd=1000.0,
+        funding_rate=0.0012, price=68000.0, timestamp=0,
+        volatility=0.03,
+    )
+    verdict = verifier.check_portfolio(
+        proposal, Portfolio(), equity=10000.0, daily_var_limit=100.0,
+    )
+    assert verdict.tag == "approve"
+
+
+def test_gate3_var_limit_rejects_over(verifier):
+    """Proposal-only bound = $1000 * 0.03 = $30. Limit $20 → reject
+    with reason ``portfolio_var_limit_exceeded``."""
+    proposal = TradeProposal(
+        direction="LONG", notional_usd=1000.0,
+        funding_rate=0.0012, price=68000.0, timestamp=0,
+        volatility=0.03,
+    )
+    verdict = verifier.check_portfolio(
+        proposal, Portfolio(), equity=10000.0, daily_var_limit=20.0,
+    )
+    assert verdict.tag == "reject"
+    assert "portfolio_var_limit_exceeded" in verdict.reason_codes
+
+
+def test_gate3_var_bound_includes_same_asset_position(verifier):
+    """Same-asset correlation is 1.0, so an existing LONG contributes
+    its full |notional| * volatility to the bound.
+
+    existing: $50000 * 0.02 = $1000 notional at vol 0.05 → $50
+    proposal: $500 at vol 0.04 → $20
+    total bound = $70. Limit $60 → reject."""
+    proposal = TradeProposal(
+        direction="LONG", notional_usd=500.0,
+        funding_rate=0.0012, price=50000.0, timestamp=0,
+        volatility=0.04,
+    )
+    portfolio = Portfolio(
+        positions=(PortfolioPosition(
+            direction="LONG", entry_price=50000.0, size=0.02,
+            volatility=0.05),),
+    )
+    verdict = verifier.check_portfolio(
+        proposal, portfolio, equity=10000.0, daily_var_limit=60.0,
+    )
+    assert verdict.tag == "reject"
+    assert "portfolio_var_limit_exceeded" in verdict.reason_codes
+
+
+def test_gate3_var_bound_weights_cross_asset_by_correlation(verifier):
+    """Cross-asset existing contributes |corr| * |notional| * vol.
+
+    existing ETH: $2000 * 1.0 = $2000 notional at vol 0.05, weighted by
+      |corr(BTC,ETH)|=0.5 → $50
+    proposal BTC: $1000 at vol 0.03 → $30
+    total bound = $80. Limit $70 → reject; limit $100 → approve."""
+    proposal = TradeProposal(
+        direction="LONG", notional_usd=1000.0,
+        funding_rate=0.0012, price=68000.0, timestamp=0,
+        asset="BTC", volatility=0.03,
+    )
+    portfolio = Portfolio(
+        positions=(PortfolioPosition(
+            direction="LONG", entry_price=2000.0, size=1.0,
+            asset="ETH", volatility=0.05),),
+        correlations=(CorrelationEntry(
+            asset_a="BTC", asset_b="ETH", coefficient=0.5),),
+    )
+    reject = verifier.check_portfolio(
+        proposal, portfolio, equity=10000.0, daily_var_limit=70.0,
+    )
+    assert reject.tag == "reject"
+    assert "portfolio_var_limit_exceeded" in reject.reason_codes
+    approve = verifier.check_portfolio(
+        proposal, portfolio, equity=10000.0, daily_var_limit=100.0,
+    )
+    assert approve.tag == "approve"
+
+
 # ── Combined certificate ─────────────────────────────────────────
 
 def test_certificate_clean_approval(verifier):

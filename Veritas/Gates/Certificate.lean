@@ -46,7 +46,7 @@ def emitCertificate
         assumptions := assumptions, finalNotionalUsd := 0 }
     | _ =>
       let p' : TradeProposal := { p with notionalUsd := size2 }
-      let g3 := checkPortfolio p' port c.equity
+      let g3 := checkPortfolio p' port c
       let size3 : Rat := match g3 with
         | .Approve   => size2
         | .Resize n  => n
@@ -125,7 +125,7 @@ theorem certificate_soundness
       simp [emitCertificate, hv, hg1, hg2, Certificate.approves, Verdict.isReject] at h
     | Approve =>
       -- Case-split on Gate 3's verdict (input proposal p with notional = p.notionalUsd).
-      cases hg3 : checkPortfolio { p with notionalUsd := p.notionalUsd } port c.equity with
+      cases hg3 : checkPortfolio { p with notionalUsd := p.notionalUsd } port c with
       | Reject codes =>
         exfalso
         simp [emitCertificate, hv, hg1, hg2, hg3, Certificate.approves, Verdict.isReject] at h
@@ -138,7 +138,7 @@ theorem certificate_soundness
         · simp [emitCertificate, hv, hg1, hg2, hg3, Verdict.isReject]
         · simp [emitCertificate, hv, hg1, hg2, hg3, Verdict.isReject]
     | Resize n =>
-      cases hg3 : checkPortfolio { p with notionalUsd := n } port c.equity with
+      cases hg3 : checkPortfolio { p with notionalUsd := n } port c with
       | Reject codes =>
         exfalso
         simp [emitCertificate, hv, hg1, hg2, hg3, Certificate.approves, Verdict.isReject] at h

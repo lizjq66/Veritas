@@ -48,6 +48,7 @@ class ProposalIn(BaseModel):
     spot_price: float = 0.0
     liquidations24h: float = 0.0
     asset: str = ""
+    volatility: float = Field(default=0.0, ge=0)
 
 
 class ConstraintsIn(BaseModel):
@@ -57,6 +58,7 @@ class ConstraintsIn(BaseModel):
     max_leverage: float = 1.0
     max_position_fraction: float = 0.25
     stop_loss_pct: float = 5.0
+    daily_var_limit: float = Field(default=0.0, ge=0)
 
 
 class PositionIn(BaseModel):
@@ -64,6 +66,7 @@ class PositionIn(BaseModel):
     entry_price: float = Field(gt=0)
     size: float = Field(gt=0)
     asset: str = ""
+    volatility: float = Field(default=0.0, ge=0)
 
 
 class CorrelationIn(BaseModel):
@@ -97,6 +100,7 @@ def _to_proposal(p: ProposalIn) -> TradeProposal:
         spot_price=p.spot_price,
         liquidations24h=p.liquidations24h,
         asset=p.asset,
+        volatility=p.volatility,
     )
 
 
@@ -108,6 +112,7 @@ def _to_constraints(c: ConstraintsIn) -> AccountConstraints:
         max_leverage=c.max_leverage,
         max_position_fraction=c.max_position_fraction,
         stop_loss_pct=c.stop_loss_pct,
+        daily_var_limit=c.daily_var_limit,
     )
 
 
@@ -120,7 +125,8 @@ def _to_portfolio(p: PortfolioIn | None) -> Portfolio:
             PortfolioPosition(direction=pos.direction,
                               entry_price=pos.entry_price,
                               size=pos.size,
-                              asset=pos.asset)
+                              asset=pos.asset,
+                              volatility=pos.volatility)
             for pos in p.positions
         ),
         max_gross_exposure_fraction=p.max_gross_exposure_fraction,
@@ -181,6 +187,7 @@ async def verify_portfolio(req: VerifyRequest) -> dict:
         _to_proposal(req.proposal),
         _to_portfolio(req.portfolio),
         req.constraints.equity,
+        req.constraints.daily_var_limit,
     )
     return {
         "gate": 3,

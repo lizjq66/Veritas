@@ -92,6 +92,24 @@ TOOLS = [
                 },
                 "max_leverage": {"type": "number", "default": 1.0},
                 "stop_loss_pct": {"type": "number", "default": 5.0},
+                "daily_var_limit": {
+                    "type": "number",
+                    "default": 0,
+                    "description": (
+                        "Daily VaR budget in USD. When > 0, Gate 3 rejects "
+                        "the proposal if its linear-VaR upper bound exceeds "
+                        "this limit. Set to 0 to disable VaR gating."
+                    ),
+                },
+                "volatility": {
+                    "type": "number",
+                    "default": 0,
+                    "description": (
+                        "Daily return volatility estimate for the proposed "
+                        "asset (fraction; e.g. 0.03 for 3%). Only consumed "
+                        "when daily_var_limit > 0."
+                    ),
+                },
                 "existing_position_direction": {
                     "type": "string",
                     "enum": ["LONG", "SHORT"],
@@ -99,6 +117,14 @@ TOOLS = [
                 },
                 "existing_position_entry_price": {"type": "number"},
                 "existing_position_size": {"type": "number"},
+                "existing_position_volatility": {
+                    "type": "number",
+                    "default": 0,
+                    "description": (
+                        "Daily return volatility estimate for the existing "
+                        "position. Only consumed when daily_var_limit > 0."
+                    ),
+                },
                 "max_gross_exposure_fraction": {"type": "number", "default": 0.50},
             },
             "required": ["direction", "notional_usd", "funding_rate",
@@ -195,6 +221,7 @@ def _handle_verify_proposal(args: dict) -> dict:
         timestamp=int(args.get("timestamp", 0)),
         open_interest=float(args.get("open_interest", 0.0)),
         spot_price=float(args.get("spot_price", 0.0)),
+        volatility=float(args.get("volatility", 0.0)),
     )
     constraints = AccountConstraints(
         equity=float(args["equity"]),
@@ -202,6 +229,7 @@ def _handle_verify_proposal(args: dict) -> dict:
         sample_size=int(args.get("sample_size", 0)),
         max_leverage=float(args.get("max_leverage", 1.0)),
         stop_loss_pct=float(args.get("stop_loss_pct", 5.0)),
+        daily_var_limit=float(args.get("daily_var_limit", 0.0)),
     )
     positions: tuple[PortfolioPosition, ...] = ()
     if args.get("existing_position_direction"):
@@ -209,6 +237,7 @@ def _handle_verify_proposal(args: dict) -> dict:
             direction=args["existing_position_direction"],
             entry_price=float(args["existing_position_entry_price"]),
             size=float(args["existing_position_size"]),
+            volatility=float(args.get("existing_position_volatility", 0.0)),
         ),)
     portfolio = Portfolio(
         positions=positions,

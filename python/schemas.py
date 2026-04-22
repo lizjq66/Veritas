@@ -47,6 +47,12 @@ class TradeProposal:
     """Asset symbol (e.g. "BTC"). Gate 3 uses this for same-asset
     direction-conflict detection and cross-asset correlation weighting.
     Default empty string preserves v0.1 single-asset behavior."""
+    volatility: float = 0.0
+    """Caller-supplied estimate of daily return volatility as a fraction
+    (e.g. 0.03 for 3%). Paired with AccountConstraints.daily_var_limit
+    in Gate 3's linear VaR upper-bound check. Default 0.0 means
+    'volatility unknown, don't count toward VaR'; the check is also
+    skipped entirely when daily_var_limit == 0."""
 
 
 @dataclass(frozen=True)
@@ -60,6 +66,12 @@ class AccountConstraints:
     max_leverage: float = 1.0
     max_position_fraction: float = 0.25
     stop_loss_pct: float = 5.0
+    daily_var_limit: float = 0.0
+    """Daily Value-at-Risk budget in USD. Gate 3 rejects the proposal
+    when the linear-VaR upper bound (|notional| × volatility, summed
+    correlation-weighted across existing positions plus the new
+    proposal) exceeds this limit. Default 0.0 disables the VaR check;
+    only the gross-exposure cap is enforced."""
 
 
 @dataclass(frozen=True)
@@ -73,6 +85,10 @@ class PortfolioPosition:
     """Asset symbol. Defaults to "" — under Gate 3's correlation
     rules, "" == "" resolves to correlation 1.0, preserving v0.1
     single-asset behavior."""
+    volatility: float = 0.0
+    """Daily return volatility estimate for this existing position.
+    Used only by Gate 3's linear-VaR check. Default 0.0 is safe when
+    the caller isn't opting into VaR gating."""
 
 
 @dataclass(frozen=True)

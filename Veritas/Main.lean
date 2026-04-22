@@ -157,7 +157,7 @@ private def handleMonitor (args : List String) : IO UInt32 := do
         ⟨strToRat! frS, strToRat! priceS, tsS.toNat!, strToRat! oiS, 0, 0⟩
       let position : Position :=
         ⟨dir, strToRat! epS, strToRat! szS, strToRat! levS,
-         strToRat! slS, etsS.toNat!, aname, ""⟩
+         strToRat! slS, etsS.toNat!, aname, "", 0⟩
       let decision := Strategy.checkExit snapshot position
       if decision.shouldExit then
         let reasonStr := match decision.reason with
@@ -290,7 +290,7 @@ private def handleVerifySignal (args : List String) : IO UInt32 := do
     | some dir =>
       let proposal : Gates.TradeProposal :=
         ⟨dir, strToRat! notionalS, strToRat! frS, strToRat! priceS,
-         tsS.toNat!, strToRat! oiS, strToRat! spotS, strToRat! liqS, ""⟩
+         tsS.toNat!, strToRat! oiS, strToRat! spotS, strToRat! liqS, "", 0⟩
       let (verdict, assumptions) := Gates.verifySignal proposal
       IO.println (jsonObj [
         jsonStr "gate" "1",
@@ -316,10 +316,10 @@ private def handleCheckConstraints (args : List String) : IO UInt32 := do
     | none => IO.eprintln s!"unknown direction: {dirS}"; return 1
     | some dir =>
       let proposal : Gates.TradeProposal :=
-        ⟨dir, strToRat! notionalS, 0, 0, 0, 0, 0, 0, ""⟩
+        ⟨dir, strToRat! notionalS, 0, 0, 0, 0, 0, 0, "", 0⟩
       let constraints : Gates.AccountConstraints :=
         ⟨strToRat! equityS, strToRat! maxFracS, strToRat! maxLevS,
-         strToRat! stopPctS, strToRat! relS, sampleS.toNat!⟩
+         strToRat! stopPctS, strToRat! relS, sampleS.toNat!, 0⟩
       let verdict := Gates.checkConstraints proposal constraints
       IO.println (jsonObj [
         jsonStr "gate" "2",
@@ -346,9 +346,9 @@ private def handleCheckPortfolio (args : List String) : IO UInt32 := do
     | none => IO.eprintln s!"unknown direction: {dirS}"; return 1
     | some dir =>
       let proposal : Gates.TradeProposal :=
-        ⟨dir, strToRat! notionalS, 0, 0, 0, 0, 0, 0, ""⟩
+        ⟨dir, strToRat! notionalS, 0, 0, 0, 0, 0, 0, "", 0⟩
       let port : Gates.Portfolio := ⟨[], strToRat! maxFracS, []⟩
-      let verdict := Gates.checkPortfolio proposal port (strToRat! equityS)
+      let verdict := Gates.checkPortfolio proposal port ⟨strToRat! equityS, 0, 0, 0, 0, 0, 0⟩
       IO.println (jsonObj [
         jsonStr "gate" "3",
         jsonStr "name" "portfolio_interference",
@@ -358,11 +358,11 @@ private def handleCheckPortfolio (args : List String) : IO UInt32 := do
     match Direction.fromString? dirS, Direction.fromString? exDirS with
     | some dir, some exDir =>
       let proposal : Gates.TradeProposal :=
-        ⟨dir, strToRat! notionalS, 0, 0, 0, 0, 0, 0, ""⟩
+        ⟨dir, strToRat! notionalS, 0, 0, 0, 0, 0, 0, "", 0⟩
       let pos : Position :=
-        ⟨exDir, strToRat! exEpS, strToRat! exSzS, 1, 5, 0, "", ""⟩
+        ⟨exDir, strToRat! exEpS, strToRat! exSzS, 1, 5, 0, "", "", 0⟩
       let port : Gates.Portfolio := ⟨[pos], strToRat! maxFracS, []⟩
-      let verdict := Gates.checkPortfolio proposal port (strToRat! equityS)
+      let verdict := Gates.checkPortfolio proposal port ⟨strToRat! equityS, 0, 0, 0, 0, 0, 0⟩
       IO.println (jsonObj [
         jsonStr "gate" "3",
         jsonStr "name" "portfolio_interference",
@@ -380,36 +380,43 @@ private def handleClassifyExit (args : List String) : IO UInt32 :=
 private def handleCheckPortfolioEx (args : List String) : IO UInt32 := do
   let usage :=
     "usage: veritas-core check-portfolio-ex <dir> <notional> <equity> " ++
-    "<max_gross_frac> <prop_asset> (none | one <ed> <ep> <sz> <asset>) " ++
-    "<n_corr> [<a> <b> <c>]*"
+    "<daily_var_limit> <max_gross_frac> <prop_asset> <prop_vol> " ++
+    "(none | one <ed> <ep> <sz> <asset> <vol>) <n_corr> [<a> <b> <c>]*"
   match args with
-  | dirS :: notionalS :: equityS :: maxFracS :: propAssetS
-      :: "none" :: _nCorrS :: corrArgs =>
+  | dirS :: notionalS :: equityS :: varLimS :: maxFracS :: propAssetS
+      :: propVolS :: "none" :: _nCorrS :: corrArgs =>
     match Direction.fromString? dirS, parseCorrelationTriples corrArgs with
     | some dir, some corrs =>
       let proposal : Gates.TradeProposal :=
-        ⟨dir, strToRat! notionalS, 0, 0, 0, 0, 0, 0, propAssetS⟩
+        ⟨dir, strToRat! notionalS, 0, 0, 0, 0, 0, 0, propAssetS,
+         strToRat! propVolS⟩
       let port : Gates.Portfolio := ⟨[], strToRat! maxFracS, corrs⟩
-      let verdict := Gates.checkPortfolio proposal port (strToRat! equityS)
+      let constraints : Gates.AccountConstraints :=
+        ⟨strToRat! equityS, 0, 0, 0, 0, 0, strToRat! varLimS⟩
+      let verdict := Gates.checkPortfolio proposal port constraints
       IO.println (jsonObj [
         jsonStr "gate" "3",
         jsonStr "name" "portfolio_interference",
         s!"\"result\": {jsonVerdict verdict}"])
       return 0
     | _, _ => IO.eprintln usage; return 1
-  | dirS :: notionalS :: equityS :: maxFracS :: propAssetS
-      :: "one" :: exDirS :: exEpS :: exSzS :: exAssetS
-      :: _nCorrS :: corrArgs =>
+  | dirS :: notionalS :: equityS :: varLimS :: maxFracS :: propAssetS
+      :: propVolS :: "one" :: exDirS :: exEpS :: exSzS :: exAssetS
+      :: exVolS :: _nCorrS :: corrArgs =>
     match Direction.fromString? dirS,
           Direction.fromString? exDirS,
           parseCorrelationTriples corrArgs with
     | some dir, some exDir, some corrs =>
       let proposal : Gates.TradeProposal :=
-        ⟨dir, strToRat! notionalS, 0, 0, 0, 0, 0, 0, propAssetS⟩
+        ⟨dir, strToRat! notionalS, 0, 0, 0, 0, 0, 0, propAssetS,
+         strToRat! propVolS⟩
       let pos : Position :=
-        ⟨exDir, strToRat! exEpS, strToRat! exSzS, 1, 5, 0, "", exAssetS⟩
+        ⟨exDir, strToRat! exEpS, strToRat! exSzS, 1, 5, 0, "", exAssetS,
+         strToRat! exVolS⟩
       let port : Gates.Portfolio := ⟨[pos], strToRat! maxFracS, corrs⟩
-      let verdict := Gates.checkPortfolio proposal port (strToRat! equityS)
+      let constraints : Gates.AccountConstraints :=
+        ⟨strToRat! equityS, 0, 0, 0, 0, 0, strToRat! varLimS⟩
+      let verdict := Gates.checkPortfolio proposal port constraints
       IO.println (jsonObj [
         jsonStr "gate" "3",
         jsonStr "name" "portfolio_interference",
@@ -421,24 +428,27 @@ private def handleCheckPortfolioEx (args : List String) : IO UInt32 := do
 private def handleEmitCertificateEx (args : List String) : IO UInt32 := do
   let usage :=
     "usage: veritas-core emit-certificate-ex <dir> <notional> <fr> " ++
-    "<price> <ts> <oi> <spot> <equity> <rel> <sample> <max_lev> " ++
-    "<max_pos_frac> <stop_pct> <max_gross_frac> <prop_asset> " ++
-    "(none | one <ed> <ep> <sz> <asset>) <n_corr> [<a> <b> <c>]*"
+    "<price> <ts> <oi> <spot> <equity> <daily_var_limit> <rel> <sample> " ++
+    "<max_lev> <max_pos_frac> <stop_pct> <max_gross_frac> <prop_asset> " ++
+    "<prop_vol> (none | one <ed> <ep> <sz> <asset> <vol>) " ++
+    "<n_corr> [<a> <b> <c>]*"
   let buildAndEmit := fun (port : Gates.Portfolio)
                           (dirStr : String) (notionalStr frStr priceStr : String)
                           (tsStr oiStr spotStr : String)
-                          (equityStr relStr sampleStr : String)
+                          (equityStr varLimStr relStr sampleStr : String)
                           (maxLevStr maxFracStr stopPctStr : String)
-                          (propAsset : String) => do
+                          (propAsset propVolStr : String) => do
     match Direction.fromString? dirStr with
     | none => IO.eprintln s!"unknown direction: {dirStr}"; return (1 : UInt32)
     | some dir =>
       let proposal : Gates.TradeProposal :=
         ⟨dir, strToRat! notionalStr, strToRat! frStr, strToRat! priceStr,
-         tsStr.toNat!, strToRat! oiStr, strToRat! spotStr, 0, propAsset⟩
+         tsStr.toNat!, strToRat! oiStr, strToRat! spotStr, 0, propAsset,
+         strToRat! propVolStr⟩
       let constraints : Gates.AccountConstraints :=
         ⟨strToRat! equityStr, strToRat! maxFracStr, strToRat! maxLevStr,
-         strToRat! stopPctStr, strToRat! relStr, sampleStr.toNat!⟩
+         strToRat! stopPctStr, strToRat! relStr, sampleStr.toNat!,
+         strToRat! varLimStr⟩
       let cert := Gates.emitCertificate proposal constraints port
       IO.println (jsonObj [
         s!"\"gate1\": {jsonVerdict cert.gate1}",
@@ -450,24 +460,27 @@ private def handleEmitCertificateEx (args : List String) : IO UInt32 := do
       return 0
   match args with
   | d :: n :: fr :: pr :: ts :: oi :: sp
-      :: eq :: rel :: sam :: lev :: pfrac :: stop
-      :: gfrac :: propAsset :: "none" :: _nCorrS :: corrArgs =>
+      :: eq :: varLim :: rel :: sam :: lev :: pfrac :: stop
+      :: gfrac :: propAsset :: propVol :: "none" :: _nCorrS :: corrArgs =>
     match parseCorrelationTriples corrArgs with
     | some corrs =>
       let port : Gates.Portfolio := ⟨[], strToRat! gfrac, corrs⟩
-      buildAndEmit port d n fr pr ts oi sp eq rel sam lev pfrac stop propAsset
+      buildAndEmit port d n fr pr ts oi sp eq varLim rel sam lev pfrac stop
+                   propAsset propVol
     | none => IO.eprintln usage; return 1
   | d :: n :: fr :: pr :: ts :: oi :: sp
-      :: eq :: rel :: sam :: lev :: pfrac :: stop
-      :: gfrac :: propAsset
-      :: "one" :: exDirS :: exEpS :: exSzS :: exAssetS
+      :: eq :: varLim :: rel :: sam :: lev :: pfrac :: stop
+      :: gfrac :: propAsset :: propVol
+      :: "one" :: exDirS :: exEpS :: exSzS :: exAssetS :: exVolS
       :: _nCorrS :: corrArgs =>
     match Direction.fromString? exDirS, parseCorrelationTriples corrArgs with
     | some exDir, some corrs =>
       let pos : Position :=
-        ⟨exDir, strToRat! exEpS, strToRat! exSzS, 1, 5, 0, "", exAssetS⟩
+        ⟨exDir, strToRat! exEpS, strToRat! exSzS, 1, 5, 0, "", exAssetS,
+         strToRat! exVolS⟩
       let port : Gates.Portfolio := ⟨[pos], strToRat! gfrac, corrs⟩
-      buildAndEmit port d n fr pr ts oi sp eq rel sam lev pfrac stop propAsset
+      buildAndEmit port d n fr pr ts oi sp eq varLim rel sam lev pfrac stop
+                   propAsset propVol
     | _, _ => IO.eprintln usage; return 1
   | _ => IO.eprintln usage; return 1
 
@@ -482,10 +495,10 @@ private def handleEmitCertificate (args : List String) : IO UInt32 := do
     | some dir =>
       let proposal : Gates.TradeProposal :=
         ⟨dir, strToRat! notionalStr, strToRat! frStr, strToRat! priceStr,
-         tsStr.toNat!, strToRat! oiStr, strToRat! spotStr, 0, ""⟩
+         tsStr.toNat!, strToRat! oiStr, strToRat! spotStr, 0, "", 0⟩
       let constraints : Gates.AccountConstraints :=
         ⟨strToRat! equityStr, strToRat! maxFracStr, strToRat! maxLevStr,
-         strToRat! stopPctStr, strToRat! relStr, sampleStr.toNat!⟩
+         strToRat! stopPctStr, strToRat! relStr, sampleStr.toNat!, 0⟩
       let cert := Gates.emitCertificate proposal constraints port
       IO.println (jsonObj [
         s!"\"gate1\": {jsonVerdict cert.gate1}",
@@ -504,7 +517,7 @@ private def handleEmitCertificate (args : List String) : IO UInt32 := do
     | none => IO.eprintln s!"unknown existing direction: {exDirS}"; return 1
     | some exDir =>
       let pos : Position :=
-        ⟨exDir, strToRat! exEpS, strToRat! exSzS, 1, 5, 0, "", ""⟩
+        ⟨exDir, strToRat! exEpS, strToRat! exSzS, 1, 5, 0, "", "", 0⟩
       let port : Gates.Portfolio := ⟨[pos], strToRat! gfrac, []⟩
       parse port d n fr pr ts oi sp eq rel sam lev pfrac stop
   | [d, n, fr, pr, ts, oi, eq, rel, sam, lev, pfrac, stop, gfrac, "none"] =>
@@ -515,7 +528,7 @@ private def handleEmitCertificate (args : List String) : IO UInt32 := do
     | none => IO.eprintln s!"unknown existing direction: {exDirS}"; return 1
     | some exDir =>
       let pos : Position :=
-        ⟨exDir, strToRat! exEpS, strToRat! exSzS, 1, 5, 0, "", ""⟩
+        ⟨exDir, strToRat! exEpS, strToRat! exSzS, 1, 5, 0, "", "", 0⟩
       let port : Gates.Portfolio := ⟨[pos], strToRat! gfrac, []⟩
       parse port d n fr pr ts oi "0" eq rel sam lev pfrac stop
   | _ =>

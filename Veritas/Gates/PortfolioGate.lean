@@ -48,6 +48,26 @@ def correlationAdjustedExposure
         correlationBetween port.correlations pos.asset p.asset)
     0
 
+/-- Linear upper bound on daily portfolio VaR after adding the
+    proposal. For each existing position, contributes
+    `|notional| × volatility × |correlation with proposal.asset|`;
+    the proposal's own contribution is `|notional| × volatility`.
+
+    This is an *upper bound* on the quadratic-form VaR
+    (√xᵀΣx) via the triangle inequality, which lets Gate 3's VaR
+    check stay inside exact `Rat` arithmetic — no square roots,
+    no numeric approximation. If the linear bound fits the limit,
+    the true VaR does too. -/
+def portfolioVarBound
+    (port : Portfolio) (p : TradeProposal) : Rat :=
+  let existing := port.positions.foldl
+    (fun acc pos =>
+      acc +
+      |pos.entryPrice * pos.size| * pos.volatility *
+        correlationBetween port.correlations pos.asset p.asset)
+    0
+  existing + |p.notionalUsd| * p.volatility
+
 /-- Does any existing position on the same asset carry the opposite
     direction? Cross-asset opposite directions are not a conflict. -/
 def hasDirectionConflict
@@ -55,18 +75,26 @@ def hasDirectionConflict
   positions.any
     (fun pos => pos.asset == p.asset && pos.direction != p.direction)
 
-/-- Gate 3: check portfolio interference under correlation weighting. -/
+/-- Gate 3: check portfolio interference under correlation weighting
+    and (optionally) a linear VaR upper bound.
+
+    The gross-exposure cap is always enforced. The VaR bound is
+    enforced additionally iff the caller supplies a non-zero
+    `dailyVarLimit` in `AccountConstraints`. Default `dailyVarLimit = 0`
+    preserves the v0.2 single-check behavior. -/
 def checkPortfolio
-    (p : TradeProposal) (port : Portfolio) (equity : Rat) : Verdict :=
+    (p : TradeProposal) (port : Portfolio) (c : AccountConstraints) : Verdict :=
   if hasDirectionConflict port.positions p then
     .Reject ["direction_conflicts_existing_position"]
   else
     let adjusted := correlationAdjustedExposure port p
-    let cap := equity * port.maxGrossExposureFraction
+    let cap := c.equity * port.maxGrossExposureFraction
     let proposed := |p.notionalUsd|
     let total := adjusted + proposed
     if cap ≤ 0 then
       .Reject ["gross_exposure_cap_non_positive"]
+    else if c.dailyVarLimit > 0 ∧ portfolioVarBound port p > c.dailyVarLimit then
+      .Reject ["portfolio_var_limit_exceeded"]
     else if total ≤ cap then
       .Approve
     else
@@ -78,26 +106,29 @@ def checkPortfolio
 
 -- ── Soundness contract ────────────────────────────────────────────
 
-/-- Gate 3 soundness (approve path): correlation-adjusted exposure
-    plus the proposal's absolute notional stays within the cap. -/
+/-- Gate 3 soundness (approve, gross-exposure): correlation-adjusted
+    exposure plus the proposal's absolute notional stays within the
+    gross-exposure cap. -/
 theorem checkPortfolio_approve_respects_cap
-    (p : TradeProposal) (port : Portfolio) (equity : Rat)
-    (h : checkPortfolio p port equity = .Approve) :
+    (p : TradeProposal) (port : Portfolio) (c : AccountConstraints)
+    (h : checkPortfolio p port c = .Approve) :
     correlationAdjustedExposure port p + |p.notionalUsd|
-      ≤ equity * port.maxGrossExposureFraction := by
+      ≤ c.equity * port.maxGrossExposureFraction := by
   have h' :
       (if hasDirectionConflict port.positions p then
         Verdict.Reject ["direction_conflicts_existing_position"]
-       else if equity * port.maxGrossExposureFraction ≤ 0 then
+       else if c.equity * port.maxGrossExposureFraction ≤ 0 then
         Verdict.Reject ["gross_exposure_cap_non_positive"]
+       else if c.dailyVarLimit > 0 ∧ portfolioVarBound port p > c.dailyVarLimit then
+        Verdict.Reject ["portfolio_var_limit_exceeded"]
        else if correlationAdjustedExposure port p + |p.notionalUsd|
-              ≤ equity * port.maxGrossExposureFraction then
+              ≤ c.equity * port.maxGrossExposureFraction then
         Verdict.Approve
-       else if equity * port.maxGrossExposureFraction
+       else if c.equity * port.maxGrossExposureFraction
                - correlationAdjustedExposure port p ≤ 0 then
         Verdict.Reject ["portfolio_already_at_correlation_weighted_cap"]
        else
-        Verdict.Resize (equity * port.maxGrossExposureFraction
+        Verdict.Resize (c.equity * port.maxGrossExposureFraction
                          - correlationAdjustedExposure port p))
         = .Approve := h
   split at h'
@@ -105,9 +136,50 @@ theorem checkPortfolio_approve_respects_cap
   · split at h'
     · cases h'
     · split at h'
-      · rename_i hle; exact hle
+      · cases h'
       · split at h'
-        · cases h'
-        · cases h'
+        · rename_i hle; exact hle
+        · split at h'
+          · cases h'
+          · cases h'
+
+/-- Gate 3 soundness (approve, VaR): when the caller sets a positive
+    `dailyVarLimit`, the portfolio's linear VaR upper bound stays
+    within it. The linear bound is a true upper bound on
+    quadratic-form VaR (√xᵀΣx), so respecting the linear limit
+    implies respecting the quadratic one. -/
+theorem checkPortfolio_approve_respects_var_bound
+    (p : TradeProposal) (port : Portfolio) (c : AccountConstraints)
+    (hpos : c.dailyVarLimit > 0)
+    (h : checkPortfolio p port c = .Approve) :
+    portfolioVarBound port p ≤ c.dailyVarLimit := by
+  have h' :
+      (if hasDirectionConflict port.positions p then
+        Verdict.Reject ["direction_conflicts_existing_position"]
+       else if c.equity * port.maxGrossExposureFraction ≤ 0 then
+        Verdict.Reject ["gross_exposure_cap_non_positive"]
+       else if c.dailyVarLimit > 0 ∧ portfolioVarBound port p > c.dailyVarLimit then
+        Verdict.Reject ["portfolio_var_limit_exceeded"]
+       else if correlationAdjustedExposure port p + |p.notionalUsd|
+              ≤ c.equity * port.maxGrossExposureFraction then
+        Verdict.Approve
+       else if c.equity * port.maxGrossExposureFraction
+               - correlationAdjustedExposure port p ≤ 0 then
+        Verdict.Reject ["portfolio_already_at_correlation_weighted_cap"]
+       else
+        Verdict.Resize (c.equity * port.maxGrossExposureFraction
+                         - correlationAdjustedExposure port p))
+        = .Approve := h
+  split at h'
+  · cases h'
+  · split at h'
+    · cases h'
+    · split at h'
+      · cases h'
+      · -- In this branch, the VaR guard did NOT fire — its negation
+        -- combined with hpos gives the desired inequality.
+        rename_i hVarGuardFalse
+        by_contra hgt
+        exact hVarGuardFalse ⟨hpos, lt_of_not_ge hgt⟩
 
 end Veritas.Gates

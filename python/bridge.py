@@ -95,14 +95,18 @@ class VeritasCore:
         proposal: "TradeProposal",
         portfolio: "Portfolio",
         equity: float,
+        daily_var_limit: float = 0.0,
     ) -> dict:
-        """Gate 3: portfolio interference (v0.2 — correlation-aware)."""
+        """Gate 3: portfolio interference (v0.2 — correlation-aware,
+        v0.3 — optional linear VaR upper bound when daily_var_limit > 0)."""
         base = [
             proposal.direction,
             str(proposal.notional_usd),
             str(equity),
+            str(daily_var_limit),
             str(portfolio.max_gross_exposure_fraction),
             proposal.asset,
+            str(proposal.volatility),
         ]
         if not portfolio.positions:
             args = base + ["none"]
@@ -110,7 +114,7 @@ class VeritasCore:
             pos = portfolio.positions[0]
             args = base + [
                 "one", pos.direction, str(pos.entry_price), str(pos.size),
-                pos.asset,
+                pos.asset, str(pos.volatility),
             ]
         args = args + [str(len(portfolio.correlations))]
         for c in portfolio.correlations:
@@ -133,6 +137,7 @@ class VeritasCore:
             str(proposal.open_interest),
             str(proposal.spot_price),
             str(constraints.equity),
+            str(constraints.daily_var_limit),
             str(constraints.reliability),
             str(constraints.sample_size),
             str(constraints.max_leverage),
@@ -140,6 +145,7 @@ class VeritasCore:
             str(constraints.stop_loss_pct),
             str(portfolio.max_gross_exposure_fraction),
             proposal.asset,
+            str(proposal.volatility),
         ]
         if not portfolio.positions:
             args = base + ["none"]
@@ -147,7 +153,7 @@ class VeritasCore:
             pos = portfolio.positions[0]
             args = base + [
                 "one", pos.direction, str(pos.entry_price), str(pos.size),
-                pos.asset,
+                pos.asset, str(pos.volatility),
             ]
         args = args + [str(len(portfolio.correlations))]
         for c in portfolio.correlations:
