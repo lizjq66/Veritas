@@ -224,8 +224,10 @@ verifier itself never speaks to Hyperliquid.
 - **Three gate CLIs**: `verify-signal`, `check-constraints`,
   `check-portfolio`, `classify-exit`, `emit-certificate` on the Lean
   binary.
-- **Theorems**: 9 proved, 0 sorries, 20 axioms (all in
-  `Finance/FloatAxioms.lean` with soundness classification).
+- **Theorems**: all proved, 0 sorries, 0 Veritas-specific axioms
+  (decision-path arithmetic runs on exact `Rat` via Mathlib as of v0.2
+  Slice 5; proofs depend only on Lean's foundational `propext`,
+  `Classical.choice`, `Quot.sound`).
 - **Invariant tests**: CI-enforced grep against Python decision logic,
   gate bypass, and direct kernel invocation outside the bridge.
 - **Example runner**: `python/main.py` demonstrates a caller that
@@ -241,7 +243,7 @@ verifier itself never speaks to Hyperliquid.
   v0.2 activates it against a policy registry).
 - True multi-asset Gate 3 correlation (v0.1 treats all positions as
   fully correlated).
-- Removing rounding-dependent Float axioms (v0.2 target).
+- ~~Removing rounding-dependent Float axioms~~ (v0.2 Slice 5 — done; see below).
 - ZK certificate issuance (v0.3+).
 - Public registry of assumptions / theorems (v0.3–v0.4).
 - **Live exchange execution as a v0.1 ship requirement.** Veritas
@@ -273,9 +275,9 @@ Veritas v0.1 ships when — and only when — the following are true:
    schema layer, or invokes `veritas-core` outside the bridge.
    Enforced by `tests/test_bypass_invariant.py`.
 4. **Lean kernel is sorry-free, with disclosed axioms.** `lake build`
-   produces the binary with zero `sorry`. The 20 Float axioms in
-   `Finance/FloatAxioms.lean` are classified into exact vs.
-   rounding-dependent at the top of that file.
+   produces the binary with zero `sorry` and zero Veritas-specific
+   axioms. `Finance/FloatAxioms.lean` was deleted in Slice 5 — all
+   decision-path arithmetic runs on exact `Rat` backed by Mathlib.
 5. **Full test suite is green.** `python -m pytest tests/` passes in
    full. Runner-level tests (`test_loop.py`, `test_live_runner.py`)
    exercise the bundled example adapters only against the in-process

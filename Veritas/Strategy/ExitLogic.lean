@@ -9,15 +9,20 @@
   The ordering matters: assumption-level exits take priority over
   mechanical stop-loss. This is the Veritas philosophy — we exit
   because our thesis resolved, not just because a number crossed a line.
+
+  v0.2 Slice 5: arithmetic migrated to exact `Rat`.
 -/
 import Veritas.Types
+import Mathlib.Data.Rat.Defs
+import Mathlib.Algebra.Order.Ring.Abs
+import Mathlib.Algebra.Order.Ring.Rat
 
 namespace Veritas.Strategy
 
 open Veritas
 
-/-- Reversion target: |funding| < 0.01%/hr = 0.0001. -/
-def reversionTarget : Float := 0.0001
+/-- Reversion target: |funding| < 0.01 %/hr = 1/10000. -/
+def reversionTarget : Rat := 1 / 10000
 
 /-- Maximum hold time in seconds (8 hours). -/
 def maxHoldSeconds : Nat := 8 * 3600
@@ -25,17 +30,14 @@ def maxHoldSeconds : Nat := 8 * 3600
 /-- Step 7: Monitor — should we exit?
     Checks in order: assumption_met, assumption_broke, stop_loss. -/
 def checkExit (snapshot : MarketSnapshot) (position : Position) : ExitDecision :=
-  -- 1. Assumption met: funding rate reverted below target
-  if Float.abs snapshot.fundingRate < reversionTarget then
+  if |snapshot.fundingRate| < reversionTarget then
     { shouldExit := true, reason := some .AssumptionMet }
-  -- 2. Assumption broke: held past max time without reversion
   else if snapshot.timestamp ≥ position.entryTimestamp + maxHoldSeconds then
     { shouldExit := true, reason := some .AssumptionBroke }
-  -- 3. Stop loss: price moved against us
   else
     let pnlPct := match position.direction with
-      | .Long  => (snapshot.btcPrice - position.entryPrice) / position.entryPrice * 100.0
-      | .Short => (position.entryPrice - snapshot.btcPrice) / position.entryPrice * 100.0
+      | .Long  => (snapshot.btcPrice - position.entryPrice) / position.entryPrice * 100
+      | .Short => (position.entryPrice - snapshot.btcPrice) / position.entryPrice * 100
     if pnlPct ≤ -position.stopLossPct then
       { shouldExit := true, reason := some .StopLoss }
     else

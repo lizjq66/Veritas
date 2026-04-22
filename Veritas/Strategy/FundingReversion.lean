@@ -1,17 +1,22 @@
 /-
   Veritas.Strategy.FundingReversion — Decider + assumption extractor.
 
-  The one strategy for v0.1: funding rate mean reversion on BTC perps.
+  The first strategy for v0.1: funding rate mean reversion on BTC perps.
   When |funding_rate| exceeds a threshold, bet that it reverts.
+
+  v0.2 Slice 5: arithmetic migrated to exact `Rat`.
 -/
 import Veritas.Types
+import Mathlib.Data.Rat.Defs
+import Mathlib.Algebra.Order.Ring.Abs
+import Mathlib.Algebra.Order.Ring.Rat
 
 namespace Veritas.Strategy
 
 open Veritas
 
-/-- Funding rate threshold (0.05%/hr = 0.0005 as decimal). -/
-def fundingThreshold : Float := 0.0005
+/-- Funding rate threshold: 0.05 %/hr = 1/2000 as an exact rational. -/
+def fundingThreshold : Rat := 1 / 2000
 
 /-- Step 2: Decide — should we trade?
     If |funding_rate| > threshold, emit a signal to go against the crowd.
@@ -19,8 +24,8 @@ def fundingThreshold : Float := 0.0005
     Negative funding → longs pay shorts → go SHORT (funding will revert up). -/
 def decide (snapshot : MarketSnapshot) : Option Signal :=
   let rate := snapshot.fundingRate
-  if Float.abs rate > fundingThreshold then
-    let dir := if rate > 0.0 then Direction.Long else Direction.Short
+  if |rate| > fundingThreshold then
+    let dir := if rate > 0 then Direction.Long else Direction.Short
     some { direction := dir, fundingRate := rate, price := snapshot.btcPrice }
   else
     none

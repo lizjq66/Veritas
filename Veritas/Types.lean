@@ -3,7 +3,12 @@
 
   All decision-relevant types live here. Python I/O shell only sees
   these types through JSON serialization via the veritas-core binary.
+
+  v0.2 Slice 5: all numeric fields migrated from `Float` to `Rat`
+  (exact rationals). Mathlib's ordered-field lemmas replace the
+  Float axioms that the pre-Slice-5 proofs depended on.
 -/
+import Mathlib.Data.Rat.Defs
 
 namespace Veritas
 
@@ -21,8 +26,7 @@ inductive ExitReason where
   | StopLoss
   deriving Repr, BEq, Inhabited, DecidableEq
 
-/-- Market regime — first-pass classifier (v0.1: hand-coded from 24h price change).
-    See python/regime.py for the classifier implementation. -/
+/-- Market regime — first-pass classifier (v0.1: hand-coded from 24h price change). -/
 inductive Regime where
   | Bull
   | Bear
@@ -32,25 +36,21 @@ inductive Regime where
 
 /-- A snapshot of market state at a point in time.
 
-    `btcPrice` is the perp mark price. `spotPrice` is the concurrent
-    spot price on the reference venue (e.g. Coinbase / Binance spot).
-    Strategies that do not care about the spot leg can leave
-    `spotPrice` at its default of 0 — Veritas treats 0 as "spot
-    unknown" and strategies such as BasisReversion explicitly
-    refuse to fire on missing spot. -/
+    All numeric fields are exact `Rat` (v0.2 Slice 5). CLI input
+    parses decimal strings like `"0.0012"` directly into `Rat`. -/
 structure MarketSnapshot where
-  fundingRate : Float
-  btcPrice : Float
+  fundingRate : Rat
+  btcPrice : Rat
   timestamp : Nat
-  openInterest : Float := 0.0
-  spotPrice : Float := 0.0
+  openInterest : Rat := 0
+  spotPrice : Rat := 0
   deriving Repr, Inhabited
 
 /-- A trading signal produced by the decision engine. -/
 structure Signal where
   direction : Direction
-  fundingRate : Float
-  price : Float
+  fundingRate : Rat
+  price : Rat
   deriving Repr, Inhabited
 
 /-- An explicit assumption underlying a trade. -/
@@ -62,20 +62,16 @@ structure Assumption where
 /-- An assumption enriched with its historical reliability score. -/
 structure AssumptionWithReliability where
   assumption : Assumption
-  reliability : Float
+  reliability : Rat
   deriving Repr, Inhabited
 
-/-- An open position. `asset` identifies the underlying symbol (e.g.
-    "BTC"). v0.1 left this implicit; v0.2 Gate 3 uses it both to
-    restrict direction-conflict checks to same-asset positions and to
-    compute correlation-weighted exposure across assets. Defaults to
-    "" (empty asset) for backward compatibility. -/
+/-- An open position. `asset` identifies the underlying symbol. -/
 structure Position where
   direction : Direction
-  entryPrice : Float
-  size : Float
-  leverage : Float
-  stopLossPct : Float
+  entryPrice : Rat
+  size : Rat
+  leverage : Rat
+  stopLossPct : Rat
   entryTimestamp : Nat
   assumptionName : String
   asset : String := ""

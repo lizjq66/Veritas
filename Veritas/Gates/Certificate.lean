@@ -32,25 +32,25 @@ def emitCertificate
   | .Reject _ =>
     { gate1 := g1, gate2 := .Reject ["upstream_gate_rejected"],
       gate3 := .Reject ["upstream_gate_rejected"],
-      assumptions := assumptions, finalNotionalUsd := 0.0 }
+      assumptions := assumptions, finalNotionalUsd := 0 }
   | _ =>
     let g2 := checkConstraints p c
-    let size2 : Float := match g2 with
+    let size2 : Rat := match g2 with
       | .Approve   => p.notionalUsd
       | .Resize n  => n
-      | .Reject _  => 0.0
+      | .Reject _  => 0
     match g2 with
     | .Reject _ =>
       { gate1 := g1, gate2 := g2,
         gate3 := .Reject ["upstream_gate_rejected"],
-        assumptions := assumptions, finalNotionalUsd := 0.0 }
+        assumptions := assumptions, finalNotionalUsd := 0 }
     | _ =>
       let p' : TradeProposal := { p with notionalUsd := size2 }
       let g3 := checkPortfolio p' port c.equity
-      let size3 : Float := match g3 with
+      let size3 : Rat := match g3 with
         | .Approve   => size2
         | .Resize n  => n
-        | .Reject _  => 0.0
+        | .Reject _  => 0
       { gate1 := g1, gate2 := g2, gate3 := g3,
         assumptions := assumptions, finalNotionalUsd := size3 }
 

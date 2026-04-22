@@ -1,17 +1,17 @@
 /-
   Veritas.Finance.MaxLoss — Worst-case loss under stop-loss.
 
-  Stub for v0.1. Will be expanded in v0.2 with tighter bounds
-  and formal proofs.
+  Stub. v0.2 Slice 5: migrated to `Rat`.
 -/
 import Veritas.Types
+import Mathlib.Data.Rat.Defs
 
 namespace Veritas.Finance
 
 open Veritas
 
 /-- Maximum dollar loss if stop-loss triggers at `stopLossPct`% below entry. -/
-def maxLossUnderStopLoss (entryPrice size stopLossPct : Float) : Float :=
-  entryPrice * size * (stopLossPct / 100.0)
+def maxLossUnderStopLoss (entryPrice size stopLossPct : Rat) : Rat :=
+  entryPrice * size * (stopLossPct / 100)
 
 end Veritas.Finance

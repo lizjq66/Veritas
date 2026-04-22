@@ -1,24 +1,19 @@
 /-
   Veritas.Strategy.Regime — Market regime classification.
 
-  First-pass hand-coded classifier (v0.1):
-    price_change_24h > +2%  → Bull
-    price_change_24h < -2%  → Bear
-    otherwise               → Choppy
-
-  This is deliberately crude. The architecture stores raw context
-  alongside the tag so future classifiers can retroactively re-tag.
+  v0.2 Slice 5: thresholds migrated to exact `Rat`.
 -/
 import Veritas.Types
+import Mathlib.Data.Rat.Defs
 
 namespace Veritas.Strategy
 
 open Veritas
 
-/-- Classify market regime from 24h price change (decimal, e.g. 0.03 = +3%). -/
-def classifyRegime (priceChange24h : Float) : Regime :=
-  if priceChange24h > 0.02 then .Bull
-  else if priceChange24h < -0.02 then .Bear
+/-- Classify market regime from 24h price change (decimal, e.g. 3/100 = +3%). -/
+def classifyRegime (priceChange24h : Rat) : Regime :=
+  if priceChange24h > 1 / 50 then .Bull
+  else if priceChange24h < -(1 / 50) then .Bear
   else .Choppy
 
 end Veritas.Strategy
@@ -36,8 +31,8 @@ end Veritas.Regime
 namespace Veritas.Strategy
 
 /-- Build the price_change_24h from current and previous day price. -/
-def priceChange24h (currentPrice prevDayPrice : Float) : Float :=
-  if prevDayPrice > 0.0 then (currentPrice - prevDayPrice) / prevDayPrice
-  else 0.0
+def priceChange24h (currentPrice prevDayPrice : Rat) : Rat :=
+  if prevDayPrice > 0 then (currentPrice - prevDayPrice) / prevDayPrice
+  else 0
 
 end Veritas.Strategy

@@ -263,14 +263,16 @@ an exploration cap at 1\%.
 monotone-on-wins. These eliminate categories of silent miscount; a
 reviewer has a small set of facts about which to argue.
 
-\paragraph{Cost.} Lean~4's \texttt{Float} is an opaque FFI type with no
-algebraic library. Theorems depend on 20 axioms~\cite{floatax} capturing
-IEEE~754 ordering and arithmetic. Thirteen are exact; seven are
-rounding-dependent within the numeric ranges Veritas uses. Reducing the
-rounding-dependent axioms --- ideally to zero by migrating policy
-arithmetic to exact types (\texttt{Rat} or Mathlib's \texttt{Real}
-\cite{mathlib}) --- is the chief v0.2 technical goal. The axiom set is
-disclosed up front; hiding it would be a trust regression.
+\paragraph{Arithmetic basis.} In v0.1 Veritas compiled against
+Lean~4's opaque \texttt{Float} type and carried twenty IEEE~754 axioms
+covering ordering, sign preservation, and rounding monotonicity.
+v0.2 migrates the entire decision-path arithmetic to exact
+\texttt{Rat} via Mathlib~\cite{mathlib}. After the migration,
+\textbf{every gate-level and underlying theorem depends only on Lean's
+three foundational axioms} — \texttt{propext}, \texttt{Classical.choice},
+and \texttt{Quot.sound} — the same basis Mathlib itself rests on. No
+Veritas-specific axiom remains, no rounding assumption, no Float
+conversion primitive.
 
 % ── 5. Formal guarantees ────────────────────────────────────────
 \section{Gate-Layer Soundness Theorems}
@@ -278,8 +280,9 @@ disclosed up front; hiding it would be a trust regression.
 
 Each gate file exports a soundness theorem stating what an \textsc{approve}
 (or \textsc{resize}) verdict from that gate \emph{means}, independent of
-the underlying strategy and finance modules. The theorems, all closed
-under the 20 Float axioms, are summarized in Table~\ref{tab:thms}.
+the underlying strategy and finance modules. The theorems are summarized
+in Table~\ref{tab:thms}. All proofs close against Mathlib's exact
+\texttt{Rat} arithmetic; no IEEE 754 rounding axioms are invoked.
 
 \begin{table}[h]
 \footnotesize
@@ -434,13 +437,13 @@ to call tools; Veritas ships an MCP tool
 \section{Implementation}
 \label{sec:impl}
 
-\paragraph{v0.1 deliverables.} The \texttt{Verifier} Python surface, the
+\paragraph{v0.2 deliverables.} The \texttt{Verifier} Python surface, the
 \texttt{POST /verify/*} HTTP endpoints, the MCP \texttt{verify\_proposal}
 tool, and the \texttt{veritas-core} CLI all produce the same certificate
-for the same input, enforced by 86 passing tests with no mocks on the
+for the same input, enforced by 114 passing tests with no mocks on the
 kernel. \texttt{lake build} produces the compiled kernel binary with
-zero \texttt{sorry}. The 20 Float axioms are classified (13 exact, 7
-rounding-dependent) in \texttt{Veritas/Finance/FloatAxioms.lean}.
+zero \texttt{sorry}. The decision-path arithmetic runs on exact
+\texttt{Rat}; no \texttt{Veritas}-specific axioms exist.
 
 \paragraph{Example runner.} The repository ships a funding-reversion
 trading agent that calls Veritas on every tick. It is a demonstration of
