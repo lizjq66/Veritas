@@ -29,47 +29,12 @@ import hashlib
 import json
 
 THEOREMS: dict[str, dict] = {
-    # ── Gate 2 bounds (Finance.PositionSizing) ─────────────────────
-    "positionSize_nonneg": {
-        "gate": 2,
-        "file": "Veritas/Finance/PositionSizing.lean",
-        "status": "proven",
-        "statement_natural_language":
-            "Post-exploration position size is always non-negative.",
-        "axioms_used": [],
-    },
-    "positionSize_capped": {
-        "gate": 2,
-        "file": "Veritas/Finance/PositionSizing.lean",
-        "status": "proven",
-        "statement_natural_language":
-            "Post-exploration position size never exceeds 25% of equity.",
-        "axioms_used": [],
-    },
-    "positionSize_monotone_in_reliability": {
-        "gate": 2,
-        "file": "Veritas/Finance/PositionSizing.lean",
-        "status": "proven",
-        "statement_natural_language":
-            "Higher reliability never produces a smaller post-exploration position.",
-        "axioms_used": [],
-    },
-    "positionSize_zero_at_no_edge": {
-        "gate": 2,
-        "file": "Veritas/Finance/PositionSizing.lean",
-        "status": "proven",
-        "statement_natural_language":
-            "Post-exploration position is zero when reliability ≤ 0.5 (no edge).",
-        "axioms_used": [],
-    },
-    "positionSize_explorationCapped": {
-        "gate": 2,
-        "file": "Veritas/Finance/PositionSizing.lean",
-        "status": "proven",
-        "statement_natural_language":
-            "During exploration, position is fixed at 1% of equity.",
-        "axioms_used": [],
-    },
+    # Note: the five frequentist `positionSize_*` theorems
+    # (`_nonneg`, `_capped`, `_monotone_in_reliability`,
+    # `_zero_at_no_edge`, `_explorationCapped`) and the function
+    # `calculatePositionSize` they bound were retired in v0.4 Slice 4.
+    # Gate 2's sole sizer is now `calculatePositionSizeFromPosterior`;
+    # its Bayesian theorems live further down.
     # ── Kelly layer (Finance.Kelly) ────────────────────────────────
     "kellyFraction_nonneg": {
         "gate": 2,
@@ -226,10 +191,23 @@ THEOREMS: dict[str, dict] = {
         "statement_natural_language":
             "Bayesian post-exploration position size is zero whenever "
             "the posterior mean is ≤ 1/2 — the Bayesian 'no edge' "
-            "state. Analog of positionSize_zero_at_no_edge for the "
-            "posterior-driven sizer; matches the frequentist cutoff so "
-            "Gate 2's semantics around the no-edge line carries over "
-            "unchanged when the posterior sizer is wired in.",
+            "state. Same 1/2 cutoff the retired frequentist "
+            "positionSize_zero_at_no_edge used; preserves Gate 2's "
+            "no-edge semantics across the v0.4 migration.",
+        "axioms_used": [],
+    },
+    "positionSize_fromPosterior_monotone_in_successes": {
+        "gate": 2,
+        "file": "Veritas/Finance/PositionSizing.lean",
+        "status": "proven",
+        "statement_natural_language":
+            "Replacing a BetaPosterior with one that has k more "
+            "successes (same failures, same priors) never decreases "
+            "the post-exploration sizer's output. The Bayesian analog "
+            "of the retired positionSize_monotone_in_reliability: more "
+            "evidence for the assumption never reduces Gate 2's "
+            "ceiling. Added in v0.4 Slice 4 alongside the frequentist "
+            "sizer's retirement.",
         "axioms_used": [],
     },
     # ── Gate-layer soundness contracts ─────────────────────────────
@@ -254,8 +232,10 @@ THEOREMS: dict[str, dict] = {
         "status": "proven",
         "statement_natural_language":
             "If Gate 2 approves a proposal, its notional is at most the "
-            "reliability-adjusted ceiling computed by "
-            "calculatePositionSize.",
+            "Bayesian ceiling computed by "
+            "calculatePositionSizeFromPosterior from the account's "
+            "BetaPosterior (successes, failures, and priors). Rewritten "
+            "in v0.4 Slice 4 against the posterior-driven sizer.",
         "axioms_used": [],
     },
     "checkConstraints_resize_respects_ceiling": {
@@ -263,8 +243,10 @@ THEOREMS: dict[str, dict] = {
         "file": "Veritas/Gates/ConstraintGate.lean",
         "status": "proven",
         "statement_natural_language":
-            "If Gate 2 resizes a proposal to notional n, then n is at most "
-            "the reliability-adjusted ceiling.",
+            "If Gate 2 resizes a proposal to notional n, then n is at "
+            "most the Bayesian ceiling computed by "
+            "calculatePositionSizeFromPosterior. Rewritten in v0.4 "
+            "Slice 4 against the posterior-driven sizer.",
         "axioms_used": [],
     },
     "checkConstraints_approve_implies_proposal_nonneg": {
@@ -273,7 +255,8 @@ THEOREMS: dict[str, dict] = {
         "status": "proven",
         "statement_natural_language":
             "If Gate 2 approves a proposal, its notional is non-negative. "
-            "Follows from Gate 2 rejecting on `p.notionalUsd ≤ 0`.",
+            "Follows from Gate 2 rejecting on `p.notionalUsd ≤ 0`; "
+            "independent of the sizer family.",
         "axioms_used": [],
     },
     "checkConstraints_resize_nonneg": {
@@ -281,10 +264,11 @@ THEOREMS: dict[str, dict] = {
         "file": "Veritas/Gates/ConstraintGate.lean",
         "status": "proven",
         "statement_natural_language":
-            "If Gate 2 resizes a proposal, the resize value is non-negative. "
-            "The Resize branch is past the `calculatePositionSize ≤ 0` "
-            "rejection, so the resize value (which equals that quantity) "
-            "is strictly positive.",
+            "If Gate 2 resizes a proposal, the resize value is "
+            "non-negative. The Resize branch is past the "
+            "`calculatePositionSizeFromPosterior ≤ 0` rejection, so the "
+            "resize value (which equals that quantity) is strictly "
+            "positive.",
         "axioms_used": [],
     },
     "checkConstraints_resize_at_most_proposal": {
@@ -298,33 +282,10 @@ THEOREMS: dict[str, dict] = {
             "Gate 2 never inflates the caller's request.",
         "axioms_used": [],
     },
-    # ── v0.4 Slice 3: Bayesian Gate 2 dispatch ────────────────────
-    # Parallel to checkConstraints but reads sizing from a Beta
-    # posterior. Not yet wired into certificate composition; a
-    # follow-on slice migrates AccountConstraints and reroutes the
-    # HTTP / MCP surfaces.
-    "checkConstraintsBayesian_approve_within_ceiling": {
-        "gate": 2,
-        "file": "Veritas/Gates/ConstraintGate.lean",
-        "status": "proven",
-        "statement_natural_language":
-            "If the Bayesian Gate 2 dispatch approves, the submitted "
-            "notional is at most the posterior-driven ceiling "
-            "calculatePositionSizeFromPosterior. Bayesian analog of "
-            "checkConstraints_approve_within_ceiling.",
-        "axioms_used": [],
-    },
-    "checkConstraintsBayesian_resize_respects_ceiling": {
-        "gate": 2,
-        "file": "Veritas/Gates/ConstraintGate.lean",
-        "status": "proven",
-        "statement_natural_language":
-            "If the Bayesian Gate 2 dispatch resizes to n, then n is "
-            "at most the posterior-driven ceiling "
-            "calculatePositionSizeFromPosterior. Bayesian analog of "
-            "checkConstraints_resize_respects_ceiling.",
-        "axioms_used": [],
-    },
+    # Note: the v0.4 Slice 3 `checkConstraintsBayesian_*` theorems
+    # were absorbed into `checkConstraints_*` above in v0.4 Slice 4
+    # — `checkConstraints` IS the Bayesian dispatch now. The
+    # Bayesian ceiling statement lives in the main gate-2 entries.
     "checkPortfolio_approve_respects_cap": {
         "gate": 3,
         "file": "Veritas/Gates/PortfolioGate.lean",
@@ -444,12 +405,16 @@ THEOREMS: dict[str, dict] = {
         "file": "Veritas/Gates/Certificate.lean",
         "status": "proven",
         "statement_natural_language":
-            "If an emitted certificate approves, its finalNotionalUsd is "
-            "at most the Gate-2 reliability-adjusted ceiling. Strengthens "
-            "certificate_soundness with a numeric bound: Gate 3's possible "
-            "downstream resize can only shrink Gate 2's output, never "
-            "widen it, so the Gate-2 ceiling dominates every Approve path "
-            "through the three-gate composition.",
+            "If an emitted certificate approves, its finalNotionalUsd "
+            "is at most the Bayesian Gate-2 ceiling "
+            "calculatePositionSizeFromPosterior c.equity c.posterior "
+            "for the supplied account constraints. Strengthens "
+            "certificate_soundness with a numeric bound: Gate 3's "
+            "possible downstream resize can only shrink Gate 2's "
+            "output, never widen it, so the Gate-2 ceiling dominates "
+            "every Approve path through the three-gate composition. "
+            "Rewritten in v0.4 Slice 4 against the posterior-driven "
+            "sizer.",
         "axioms_used": [],
     },
     "certificate_approve_final_within_gate3_cap": {

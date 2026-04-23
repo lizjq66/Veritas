@@ -157,7 +157,7 @@ def test_trade_not_found():
 # ── /verify/theorem ────────────────────────────────────────────────
 
 def test_verify_theorem_proven():
-    r = client.get("/verify/theorem/positionSize_zero_at_no_edge")
+    r = client.get("/verify/theorem/positionSize_fromPosterior_zero_at_no_edge")
     assert r.status_code == 200
     d = r.json()
     assert d["status"] == "proven"
@@ -170,7 +170,7 @@ def test_verify_theorem_not_found():
 
 
 def test_verify_theorem_legacy_path():
-    r = client.get("/verify/positionSize_zero_at_no_edge")
+    r = client.get("/verify/positionSize_fromPosterior_zero_at_no_edge")
     assert r.status_code == 200
     assert r.json()["status"] == "proven"
 

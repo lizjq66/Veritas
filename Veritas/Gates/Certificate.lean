@@ -175,7 +175,7 @@ theorem certificate_approve_final_within_gate2_ceiling
     (p : TradeProposal) (c : AccountConstraints) (port : Portfolio)
     (h : (emitCertificate p c port).approves = true) :
     (emitCertificate p c port).finalNotionalUsd
-      ≤ calculatePositionSize c.equity c.reliability c.sampleSize := by
+      ≤ calculatePositionSizeFromPosterior c.equity c.posterior := by
   rcases hv : verifySignal p with ⟨g1, assums⟩
   cases hg1 : g1 with
   | Reject codes =>

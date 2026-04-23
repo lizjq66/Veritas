@@ -39,6 +39,20 @@ private def strToRat! (s : String) : Rat :=
 /-- For JSON output. -/
 private def ratToFloat (r : Rat) : Float := Learning.ratToFloat r
 
+/-- v0.4 migration shim: translate a legacy `(reliability, sampleSize)`
+    pair — what the Python bridge still sends — into the
+    `(successes, failures)` pair Gate 2's Bayesian sizer now expects.
+    Uniform `Beta(1, 1)` prior. Floor semantics on `reliability ×
+    sampleSize`; saturates at 0 on negative reliability.
+
+    To be removed in slice 5 once the Python bridge sends
+    `(successes, failures, priorAlpha, priorBeta)` directly. -/
+private def legacyRelToBeta (rel : Rat) (sample : Nat) : Nat × Nat :=
+  let prod : Rat := rel * (sample : Rat)
+  let successes : Nat := prod.num.toNat / prod.den
+  let failures : Nat := sample - successes
+  (successes, failures)
+
 -- ── JSON output helpers ───────────────────────────────────────────
 
 private def jsonStr (k v : String) : String := s!"\"{k}\": \"{v}\""
@@ -138,7 +152,13 @@ private def handleSize (args : List String) : IO UInt32 := do
   | [equityS, relS, sampleS] =>
     let eq := strToRat! equityS
     let rel := strToRat! relS
-    let size := Finance.calculatePositionSize eq rel sampleS.toNat!
+    let sample := sampleS.toNat!
+    -- v0.4 shim: translate legacy (rel, sample) to a Beta(1,1)-prior
+    -- posterior; retire when bridge sends raw (successes, failures).
+    let (succ, fail) := legacyRelToBeta rel sample
+    let posterior : Learning.BetaPosterior :=
+      { successes := succ, failures := fail, priorAlpha := 1, priorBeta := 1 }
+    let size := Finance.calculatePositionSizeFromPosterior eq posterior
     IO.println (jsonObj [jsonNum "position_size" size,
                          jsonNum "equity" eq,
                          jsonNum "reliability" rel])
@@ -317,9 +337,10 @@ private def handleCheckConstraints (args : List String) : IO UInt32 := do
     | some dir =>
       let proposal : Gates.TradeProposal :=
         ⟨dir, strToRat! notionalS, 0, 0, 0, 0, 0, 0, "", 0⟩
+      let (succ, fail) := legacyRelToBeta (strToRat! relS) sampleS.toNat!
       let constraints : Gates.AccountConstraints :=
         ⟨strToRat! equityS, strToRat! maxFracS, strToRat! maxLevS,
-         strToRat! stopPctS, strToRat! relS, sampleS.toNat!, 0⟩
+         strToRat! stopPctS, succ, fail, 1, 1, 0⟩
       let verdict := Gates.checkConstraints proposal constraints
       IO.println (jsonObj [
         jsonStr "gate" "2",
@@ -348,7 +369,7 @@ private def handleCheckPortfolio (args : List String) : IO UInt32 := do
       let proposal : Gates.TradeProposal :=
         ⟨dir, strToRat! notionalS, 0, 0, 0, 0, 0, 0, "", 0⟩
       let port : Gates.Portfolio := ⟨[], strToRat! maxFracS, []⟩
-      let verdict := Gates.checkPortfolio proposal port ⟨strToRat! equityS, 0, 0, 0, 0, 0, 0⟩
+      let verdict := Gates.checkPortfolio proposal port ⟨strToRat! equityS, 0, 0, 0, 0, 0, 1, 1, 0⟩
       IO.println (jsonObj [
         jsonStr "gate" "3",
         jsonStr "name" "portfolio_interference",
@@ -362,7 +383,7 @@ private def handleCheckPortfolio (args : List String) : IO UInt32 := do
       let pos : Position :=
         ⟨exDir, strToRat! exEpS, strToRat! exSzS, 1, 5, 0, "", "", 0⟩
       let port : Gates.Portfolio := ⟨[pos], strToRat! maxFracS, []⟩
-      let verdict := Gates.checkPortfolio proposal port ⟨strToRat! equityS, 0, 0, 0, 0, 0, 0⟩
+      let verdict := Gates.checkPortfolio proposal port ⟨strToRat! equityS, 0, 0, 0, 0, 0, 1, 1, 0⟩
       IO.println (jsonObj [
         jsonStr "gate" "3",
         jsonStr "name" "portfolio_interference",
@@ -392,7 +413,7 @@ private def handleCheckPortfolioEx (args : List String) : IO UInt32 := do
          strToRat! propVolS⟩
       let port : Gates.Portfolio := ⟨[], strToRat! maxFracS, corrs⟩
       let constraints : Gates.AccountConstraints :=
-        ⟨strToRat! equityS, 0, 0, 0, 0, 0, strToRat! varLimS⟩
+        ⟨strToRat! equityS, 0, 0, 0, 0, 0, 1, 1, strToRat! varLimS⟩
       let verdict := Gates.checkPortfolio proposal port constraints
       IO.println (jsonObj [
         jsonStr "gate" "3",
@@ -415,7 +436,7 @@ private def handleCheckPortfolioEx (args : List String) : IO UInt32 := do
          strToRat! exVolS⟩
       let port : Gates.Portfolio := ⟨[pos], strToRat! maxFracS, corrs⟩
       let constraints : Gates.AccountConstraints :=
-        ⟨strToRat! equityS, 0, 0, 0, 0, 0, strToRat! varLimS⟩
+        ⟨strToRat! equityS, 0, 0, 0, 0, 0, 1, 1, strToRat! varLimS⟩
       let verdict := Gates.checkPortfolio proposal port constraints
       IO.println (jsonObj [
         jsonStr "gate" "3",
@@ -445,10 +466,10 @@ private def handleEmitCertificateEx (args : List String) : IO UInt32 := do
         ⟨dir, strToRat! notionalStr, strToRat! frStr, strToRat! priceStr,
          tsStr.toNat!, strToRat! oiStr, strToRat! spotStr, 0, propAsset,
          strToRat! propVolStr⟩
+      let (succ, fail) := legacyRelToBeta (strToRat! relStr) sampleStr.toNat!
       let constraints : Gates.AccountConstraints :=
         ⟨strToRat! equityStr, strToRat! maxFracStr, strToRat! maxLevStr,
-         strToRat! stopPctStr, strToRat! relStr, sampleStr.toNat!,
-         strToRat! varLimStr⟩
+         strToRat! stopPctStr, succ, fail, 1, 1, strToRat! varLimStr⟩
       let cert := Gates.emitCertificate proposal constraints port
       IO.println (jsonObj [
         s!"\"gate1\": {jsonVerdict cert.gate1}",
@@ -496,9 +517,10 @@ private def handleEmitCertificate (args : List String) : IO UInt32 := do
       let proposal : Gates.TradeProposal :=
         ⟨dir, strToRat! notionalStr, strToRat! frStr, strToRat! priceStr,
          tsStr.toNat!, strToRat! oiStr, strToRat! spotStr, 0, "", 0⟩
+      let (succ, fail) := legacyRelToBeta (strToRat! relStr) sampleStr.toNat!
       let constraints : Gates.AccountConstraints :=
         ⟨strToRat! equityStr, strToRat! maxFracStr, strToRat! maxLevStr,
-         strToRat! stopPctStr, strToRat! relStr, sampleStr.toNat!, 0⟩
+         strToRat! stopPctStr, succ, fail, 1, 1, 0⟩
       let cert := Gates.emitCertificate proposal constraints port
       IO.println (jsonObj [
         s!"\"gate1\": {jsonVerdict cert.gate1}",

@@ -96,7 +96,7 @@ SUPPORTED_SCHEMA_VERSIONS: tuple[int, ...] = (1, 2)
 CURRENT_SCHEMA_VERSION: int = 2
 
 # Semver of the Veritas release. Independent of schema_version.
-VERITAS_VERSION: str = "0.3.4"
+VERITAS_VERSION: str = "0.4.0"
 
 
 # ── Canonical JSON ──────────────────────────────────────────────

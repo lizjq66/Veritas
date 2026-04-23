@@ -10,11 +10,12 @@
   `ratToFloat` conversion at the I/O boundary.
 -/
 import Veritas.Types
+import Veritas.Learning.Reliability
 import Mathlib.Data.Rat.Defs
 
 namespace Veritas.Gates
 
-open Veritas
+open Veritas Veritas.Learning
 
 /-- A proposed trade: direction, intended notional size in USD, and
     the market context the proposal was formed under. -/
@@ -40,15 +41,27 @@ structure TradeProposal where
   deriving Repr, Inhabited
 
 /-- Account-level constraints a proposal must satisfy. All numeric
-    fields are policy inputs, not derived from market state. -/
+    fields are policy inputs, not derived from market state.
+
+    v0.4: reliability is expressed as a Beta posterior. Caller
+    supplies raw `successes` and `failures`; the prior `Beta(α₀, β₀)`
+    defaults to `Beta(1, 1)` (Laplace smoothing). Gate 2 derives the
+    posterior mean internally via `calculatePositionSizeFromPosterior`.
+    Cold start (successes = failures = 0) reads as posterior mean
+    1/2 and stays in the exploration phase, matching v0.3 behavior. -/
 structure AccountConstraints where
   equity : Rat
   maxPositionFraction : Rat
   maxLeverage : Rat
   stopLossPct : Rat
-  /-- Reliability of the assumption(s) backing the proposal (0 ≤ r ≤ 1). -/
-  reliability : Rat
-  sampleSize : Nat
+  /-- Observed successes (wins) on the proposal's assumption. -/
+  successes : Nat := 0
+  /-- Observed failures (losses) on the proposal's assumption. -/
+  failures : Nat := 0
+  /-- Beta prior α. Default 1 (uniform prior / Laplace smoothing). -/
+  priorAlpha : Rat := 1
+  /-- Beta prior β. Default 1 (uniform prior / Laplace smoothing). -/
+  priorBeta : Rat := 1
   /-- Daily Value-at-Risk budget in USD. Gate 3 rejects the proposal
       when the linear-VaR upper bound (sum of |notional| × volatility,
       correlation-weighted across existing positions plus the new
@@ -57,6 +70,18 @@ structure AccountConstraints where
       gross-exposure cap is enforced. -/
   dailyVarLimit : Rat := 0
   deriving Repr, Inhabited
+
+namespace AccountConstraints
+
+/-- Derive the `BetaPosterior` Gate 2 consumes from the account's
+    observed `(successes, failures)` and prior `(priorAlpha, priorBeta)`. -/
+def posterior (c : AccountConstraints) : BetaPosterior :=
+  { successes := c.successes
+    failures := c.failures
+    priorAlpha := c.priorAlpha
+    priorBeta := c.priorBeta }
+
+end AccountConstraints
 
 /-- One entry in the portfolio correlation table. Gate 3 uses
     `|coefficient|` (clamped to [0, 1]) when weighting exposure. -/

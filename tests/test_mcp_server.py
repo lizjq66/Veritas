@@ -110,7 +110,7 @@ def test_verify_proposal_direction_conflict():
 def test_list_theorems_returns_all():
     d = _handle_list_theorems()
     names = {t["name"] for t in d["theorems"]}
-    assert "positionSize_capped" in names
+    assert "positionSize_fromPosterior_capped" in names
     assert "exitReason_exhaustive" in names
 
 
@@ -192,7 +192,7 @@ def test_verify_proven():
 
 
 def test_verify_proven_position_capped():
-    d = _handle_verify_theorem("positionSize_capped")
+    d = _handle_verify_theorem("positionSize_fromPosterior_capped")
     assert d["status"] == "proven"
 
 
