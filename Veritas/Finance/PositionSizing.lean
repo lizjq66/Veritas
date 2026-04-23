@@ -213,4 +213,177 @@ theorem positionSize_fromPosterior_monotone_in_successes
         exact le_of_not_gt hngtL
       · exact hrawMono
 
+
+-- ── Confidence-bound-aware sizing (v0.4 Slice 6) ────────────────────
+--
+-- Small-sample uncertainty: under the Bayesian sizer introduced in
+-- Slice 2, a `BetaPosterior` with `successes = 3, failures = 1`
+-- already has posterior mean ≈ 0.67 — well past the 0.5 no-edge
+-- cutoff, pushing Gate 2 into an exploitation-phase size even though
+-- four observations is nowhere near a reliable evidence base.
+--
+-- `calculatePositionSizeFromPosterior_pessimistic` wraps the Bayesian
+-- sizer with a failure-shift (see `BetaPosterior.pessimisticMean`):
+-- the caller passes a `pessimism : Nat` parameter — the number of
+-- hypothetical additional losses to simulate — and the sizer uses
+-- the pessimistic mean in place of the raw posterior mean. Larger
+-- pessimism → smaller sizing; the effect vanishes as the real
+-- sample size grows.
+--
+-- This is Veritas's pragmatic "confidence-bound" aware primitive:
+-- a true Beta-quantile lower bound requires the inverse-Beta-CDF
+-- which breaks Rat purity; the failure-shift is a legitimate
+-- Bayesian operation (equivalent to adopting a more skeptical
+-- Beta(α, β + k) prior) that preserves exact rational arithmetic
+-- while delivering the "small samples get smaller sizing"
+-- behavior.
+--
+-- Not yet wired into Gate 2. A follow-on slice can thread the
+-- pessimism parameter through `AccountConstraints` when there's
+-- evidence a caller wants it.
+
+/-- Conservative variant of `calculatePositionSizeFromPosterior`:
+    applies a `pessimism`-count failure shift to the supplied
+    posterior before sizing. At `pessimism = 0` this is identical
+    to the base sizer. -/
+def calculatePositionSizeFromPosterior_pessimistic
+    (equity : Rat) (b : BetaPosterior) (pessimism : Nat) : Rat :=
+  calculatePositionSizeFromPosterior equity
+    { b with failures := b.failures + pessimism }
+
+/-- Non-negativity of the conservative sizer, inherited from the
+    base sizer applied to the failure-shifted posterior. -/
+theorem positionSize_pessimistic_nonneg
+    (equity : Rat) (b : BetaPosterior) (pessimism : Nat)
+    (hEq : equity ≥ 0)
+    (hα : 0 ≤ b.priorAlpha) (hβ : 0 ≤ b.priorBeta)
+    (hpos : 0 < b.priorAlpha + b.priorBeta)
+    (hthr : b.successes + b.failures ≥ explorationThreshold) :
+    calculatePositionSizeFromPosterior_pessimistic equity b pessimism ≥ 0 := by
+  -- Translate the hypotheses to the failure-shifted BetaPosterior;
+  -- its priors and success-count coincide with `b` definitionally.
+  have hthr' : ({b with failures := b.failures + pessimism} : BetaPosterior).successes
+                    + ({b with failures := b.failures + pessimism} : BetaPosterior).failures
+                  ≥ explorationThreshold := by dsimp only; omega
+  exact positionSize_fromPosterior_nonneg equity
+      {b with failures := b.failures + pessimism} hEq hα hβ hpos hthr'
+
+/-- 25%-of-equity cap for the conservative sizer. -/
+theorem positionSize_pessimistic_capped
+    (equity : Rat) (b : BetaPosterior) (pessimism : Nat)
+    (hEq : equity ≥ 0)
+    (hα : 0 ≤ b.priorAlpha) (hβ : 0 ≤ b.priorBeta)
+    (hpos : 0 < b.priorAlpha + b.priorBeta)
+    (hthr : b.successes + b.failures ≥ explorationThreshold) :
+    calculatePositionSizeFromPosterior_pessimistic equity b pessimism
+      ≤ equity * exploitationCap := by
+  have hthr' : ({b with failures := b.failures + pessimism} : BetaPosterior).successes
+                    + ({b with failures := b.failures + pessimism} : BetaPosterior).failures
+                  ≥ explorationThreshold := by dsimp only; omega
+  exact positionSize_fromPosterior_capped equity
+      {b with failures := b.failures + pessimism} hEq hα hβ hpos hthr'
+
+/-- **Sizing never exceeds the base sizer.** The headline theorem of
+    confidence-bound-aware sizing: conservative sizing is always at
+    most the raw-posterior sizing, so a caller that turns on
+    pessimism never silently *grows* their Gate 2 ceiling. -/
+theorem positionSize_pessimistic_le_base
+    (equity : Rat) (b : BetaPosterior) (pessimism : Nat)
+    (hEq : equity ≥ 0)
+    (hα : 0 ≤ b.priorAlpha) (hβ : 0 ≤ b.priorBeta)
+    (hpos : 0 < b.priorAlpha + b.priorBeta)
+    (hthr : b.successes + b.failures ≥ explorationThreshold) :
+    calculatePositionSizeFromPosterior_pessimistic equity b pessimism
+      ≤ calculatePositionSizeFromPosterior equity b := by
+  unfold calculatePositionSizeFromPosterior_pessimistic
+  -- pessimism amounts to a shift in b.failures, which is monotone in
+  -- the sense that fewer failures (i.e. the original `b`) yields a
+  -- posterior mean at least as large, and the sizer is monotone in
+  -- the posterior mean. The formal path routes through
+  -- `BetaPosterior.pessimisticMean_le_posteriorMean` and the
+  -- sizer's monotonicity — but instead of wiring those together via
+  -- a fresh `positionSize_mono_in_posteriorMean` lemma, we compute
+  -- by cases on exploration vs exploitation directly.
+  unfold calculatePositionSizeFromPosterior
+  -- Both sides share the same `if successes+failures < threshold`
+  -- branch (we're past the threshold on the unshifted side, and
+  -- shifting adds to failures so it's still past the threshold).
+  have hthr' : ({ b with failures := b.failures + pessimism } : BetaPosterior).successes
+                  + { b with failures := b.failures + pessimism }.failures
+                ≥ explorationThreshold := by dsimp only; omega
+  simp only [Nat.not_lt.mpr hthr, Nat.not_lt.mpr hthr', ↓reduceIte]
+  have hpMono := BetaPosterior.pessimisticMean_le_posteriorMean b pessimism hα hβ hpos
+  -- `pessimisticMean b k` = `{b with failures := ...}.posteriorMean`;
+  -- propagate into the edge / sizing comparisons.
+  by_cases hEdgeShift : ({ b with failures := b.failures + pessimism } : BetaPosterior).posteriorMean
+                          ≤ 1 / 2
+  · -- shifted side takes 0 branch; original side ≥ 0.
+    rw [if_pos hEdgeShift]
+    by_cases hEdgeBase : b.posteriorMean ≤ 1 / 2
+    · rw [if_pos hEdgeBase]
+    · rw [if_neg hEdgeBase]
+      split
+      · exact mul_nonneg hEq (by unfold exploitationCap; norm_num)
+      · exact mul_nonneg hEq
+          (mul_nonneg (kellyFraction_nonneg b.posteriorMean 1) (by norm_num))
+  · -- shifted side past the edge → base must be too (since shifted ≤ base).
+    push_neg at hEdgeShift
+    have hEdgeBase : ¬ b.posteriorMean ≤ 1 / 2 := by
+      push_neg
+      -- pessimisticMean = {b with failures := ...}.posteriorMean,
+      -- and we have hEdgeShift: 1/2 < pessimisticMean ≤ posteriorMean (base)
+      have : ({ b with failures := b.failures + pessimism } : BetaPosterior).posteriorMean
+              ≤ b.posteriorMean := by
+        have h := hpMono
+        unfold BetaPosterior.pessimisticMean at h
+        exact h
+      linarith
+    rw [if_neg (not_le.mpr hEdgeShift), if_neg hEdgeBase]
+    -- Both sides now enter the exploitation-phase branch.
+    -- Kelly is monotone in the posterior-mean argument; both
+    -- outer min-with-cap branches preserve the comparison.
+    have hmeanBase_nn : 0 ≤ b.posteriorMean :=
+      (BetaPosterior.posteriorMean_bounded b hα hβ hpos).1
+    have hmeanBase_le_one : b.posteriorMean ≤ 1 :=
+      (BetaPosterior.posteriorMean_bounded b hα hβ hpos).2
+    have hmeanShift_le_base :
+        ({ b with failures := b.failures + pessimism } : BetaPosterior).posteriorMean
+          ≤ b.posteriorMean := by
+      have h := hpMono
+      unfold BetaPosterior.pessimisticMean at h
+      exact h
+    have hmeanShift_nn :
+        0 ≤ ({ b with failures := b.failures + pessimism } : BetaPosterior).posteriorMean := by
+      exact le_of_lt (lt_trans (by norm_num : (0 : Rat) < 1 / 2) hEdgeShift)
+    have hkMono :
+        kellyFraction
+            ({ b with failures := b.failures + pessimism } : BetaPosterior).posteriorMean
+            1
+          ≤ kellyFraction b.posteriorMean 1 :=
+      kellyFraction_mono hmeanShift_le_base hmeanShift_nn hmeanBase_le_one
+                         (by norm_num : (1 : Rat) > 0)
+    have hhkMono :
+        kellyFraction
+            ({ b with failures := b.failures + pessimism } : BetaPosterior).posteriorMean
+            1 * (1 / 2)
+          ≤ kellyFraction b.posteriorMean 1 * (1 / 2) :=
+      mul_le_mul_of_nonneg_right hkMono (by norm_num)
+    have hrawMono :
+        equity * (kellyFraction
+            ({ b with failures := b.failures + pessimism } : BetaPosterior).posteriorMean
+            1 * (1 / 2))
+          ≤ equity * (kellyFraction b.posteriorMean 1 * (1 / 2)) :=
+      mul_le_mul_of_nonneg_left hhkMono hEq
+    split_ifs with hcapS hcapB
+    · -- rawShift > cap, rawBase > cap: both take cap.
+      exact le_refl _
+    · -- rawShift > cap, rawBase ≤ cap: need cap ≤ rawBase. Since
+      -- rawShift > cap and rawShift ≤ rawBase, rawBase > cap too —
+      -- contradiction with hcapB, so this branch is vacuous.
+      exact absurd (lt_of_lt_of_le hcapS hrawMono) hcapB
+    · -- rawShift ≤ cap, rawBase > cap: need rawShift ≤ cap.
+      exact le_of_not_gt hcapS
+    · -- rawShift ≤ cap, rawBase ≤ cap: need rawShift ≤ rawBase.
+      exact hrawMono
+
 end Veritas.Finance

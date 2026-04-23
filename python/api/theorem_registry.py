@@ -210,6 +210,66 @@ THEOREMS: dict[str, dict] = {
             "sizer's retirement.",
         "axioms_used": [],
     },
+    # ── v0.4 Slice 6: confidence-bound-aware sizing ───────────────
+    # Pragmatic small-sample calibration: shift BetaPosterior.failures
+    # by a `pessimism : Nat` count. Equivalent to adopting a more
+    # skeptical Beta(α, β + k) prior; stays in exact Rat (no √).
+    # Not wired into Gate 2 yet — integration is future work.
+    "pessimisticMean_le_posteriorMean": {
+        "gate": "learning",
+        "file": "Veritas/Learning/Reliability.lean",
+        "status": "proven",
+        "statement_natural_language":
+            "pessimisticMean b k (the posterior mean after a "
+            "hypothetical shift of k extra failures) never exceeds "
+            "the ordinary posteriorMean b. Formal basis for the "
+            "'confidence-bound-aware' sizer's guarantee that turning "
+            "on pessimism can only shrink Gate 2's ceiling, never "
+            "grow it.",
+        "axioms_used": [],
+    },
+    "pessimisticMean_bounded": {
+        "gate": "learning",
+        "file": "Veritas/Learning/Reliability.lean",
+        "status": "proven",
+        "statement_natural_language":
+            "pessimisticMean stays in [0, 1], inherited from "
+            "posteriorMean_bounded applied to the failure-shifted "
+            "posterior.",
+        "axioms_used": [],
+    },
+    "positionSize_pessimistic_nonneg": {
+        "gate": 2,
+        "file": "Veritas/Finance/PositionSizing.lean",
+        "status": "proven",
+        "statement_natural_language":
+            "Non-negativity of calculatePositionSizeFromPosterior_"
+            "pessimistic, inherited from the base sizer applied to "
+            "the failure-shifted posterior.",
+        "axioms_used": [],
+    },
+    "positionSize_pessimistic_capped": {
+        "gate": 2,
+        "file": "Veritas/Finance/PositionSizing.lean",
+        "status": "proven",
+        "statement_natural_language":
+            "The pessimistic sizer respects the same 25%-of-equity "
+            "cap as the base sizer, inherited via the shifted "
+            "posterior.",
+        "axioms_used": [],
+    },
+    "positionSize_pessimistic_le_base": {
+        "gate": 2,
+        "file": "Veritas/Finance/PositionSizing.lean",
+        "status": "proven",
+        "statement_natural_language":
+            "The headline conservative-sizing theorem: the "
+            "pessimistic sizer's output is always at most the base "
+            "sizer's output under the same inputs. A caller that "
+            "turns on pessimism can never silently enlarge Gate 2's "
+            "ceiling — only shrink it.",
+        "axioms_used": [],
+    },
     # ── Gate-layer soundness contracts ─────────────────────────────
     # These are first-class theorems in Veritas/Gates/*.lean; they
     # document what each gate's Approve / Resize verdict *means*

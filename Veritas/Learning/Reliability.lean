@@ -284,6 +284,66 @@ theorem posteriorMean_uniform_prior_empty :
   unfold posteriorMean
   norm_num
 
+/-- **Pessimistic posterior mean** for small-sample / uncertainty-aware
+    sizing. Computes the posterior mean **as if** `k` additional
+    failures had been observed:
+
+      pessimisticMean b k
+        = posteriorMean { b with failures := b.failures + k }
+        = (successes + α) / (total + k + α + β)
+
+    Equivalent to updating under a more skeptical `Beta(α, β + k)`
+    prior — a legitimate Bayesian operation, just reframed for the
+    caller as "how much would my size change if I pretended I'd seen
+    `k` more losses?" Stays in exact `Rat` arithmetic (no quantile
+    computation / no √), and serves as the calibration primitive for
+    v0.4's "confidence-bound-aware sizing" story.
+
+    Why a shift rather than a true statistical lower confidence
+    bound: a Beta-distribution quantile at non-trivial confidence
+    level requires the inverse-Beta-CDF, which escapes exact
+    rationals. The failure-shift is the pragmatic approximation
+    that preserves Veritas's no-Float-axiom arithmetic guarantee
+    while still delivering the "small samples get smaller sizing"
+    behavior traders want. -/
+def pessimisticMean (b : BetaPosterior) (k : Nat) : Rat :=
+  posteriorMean { b with failures := b.failures + k }
+
+/-- Pessimistic mean never exceeds the ordinary posterior mean. -/
+theorem pessimisticMean_le_posteriorMean
+    (b : BetaPosterior) (k : Nat)
+    (hα : 0 ≤ b.priorAlpha) (_hβ : 0 ≤ b.priorBeta)
+    (hpos : 0 < b.priorAlpha + b.priorBeta) :
+    pessimisticMean b k ≤ posteriorMean b := by
+  unfold pessimisticMean posteriorMean
+  dsimp only
+  -- Goal reduces to:
+  --   (S + α) / (S + F + k + α + β) ≤ (S + α) / (S + F + α + β).
+  -- Numerator non-negative; right denominator ≤ left denominator;
+  -- dividing a non-negative numerator by a larger positive
+  -- denominator gives a smaller value.
+  push_cast
+  have hS : 0 ≤ (b.successes : Rat) := by positivity
+  have hF : 0 ≤ (b.failures : Rat) := by positivity
+  have hk : 0 ≤ (k : Rat) := by positivity
+  have hden1 : 0 < (b.successes : Rat) + b.failures + b.priorAlpha + b.priorBeta := by
+    linarith
+  have hden2 : 0 < (b.successes : Rat) + (b.failures + k) + b.priorAlpha + b.priorBeta := by
+    linarith
+  rw [div_le_div_iff₀ hden2 hden1]
+  have hnum : 0 ≤ (b.successes : Rat) + b.priorAlpha := by positivity
+  nlinarith [mul_nonneg hnum hk]
+
+/-- Pessimistic mean is in `[0, 1]`, inherited from
+    `posteriorMean_bounded` applied to the failure-shifted
+    posterior. -/
+theorem pessimisticMean_bounded
+    (b : BetaPosterior) (k : Nat)
+    (hα : 0 ≤ b.priorAlpha) (hβ : 0 ≤ b.priorBeta)
+    (hpos : 0 < b.priorAlpha + b.priorBeta) :
+    0 ≤ pessimisticMean b k ∧ pessimisticMean b k ≤ 1 :=
+  posteriorMean_bounded { b with failures := b.failures + k } hα hβ hpos
+
 end BetaPosterior
 
 end Veritas.Learning
