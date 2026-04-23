@@ -336,16 +336,27 @@ theorem certificate_approve_final_within_gate3_cap
         simpa using hcap
 
 
-/-- **Composed soundness — Gate 3 VaR upper bound carries through.**
+/-- **Composed soundness — Gate 3 projected-exposure bound carries
+    through.**
 
-    When the caller opts into VaR gating (`dailyVarLimit > 0`) and the
-    proposal's volatility is non-negative, any approving certificate
-    guarantees the portfolio's linear-VaR upper bound evaluated at the
-    FINAL notional stays within the limit. Together with
+    When the caller opts into projected-exposure gating
+    (`dailyVarLimit > 0`) and the proposal's volatility is
+    non-negative, any approving certificate guarantees the
+    portfolio's `portfolioVarBound` evaluated at the FINAL notional
+    stays within the limit. Together with
     `certificate_approve_final_within_gate3_cap` this gives every
     Approve path a numeric bound on BOTH independent Gate-3
     constraints, not just on whichever one Gate 3 was most directly
     checking at that particular input.
+
+    **Semantics caveat.** `portfolioVarBound` bounds *proposal-axis
+    projected exposure*, not full-portfolio `√xᵀΣx`. See
+    `portfolioVarBound`'s own docstring and
+    `docs/var-audit-2026-04-23.md` for the scope-of-validity
+    analysis and counter-examples. This theorem is literally true
+    for the formula's actual semantics; callers should set
+    `dailyVarLimit` with the projected-exposure interpretation in
+    mind.
 
     The non-obvious half of the proof: when Gate 3 resizes from size2
     down to `m`, the VaR guard was checked at `{p with notional := size2}`,

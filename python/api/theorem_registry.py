@@ -239,12 +239,17 @@ THEOREMS: dict[str, dict] = {
         "status": "proven",
         "statement_natural_language":
             "When the caller sets a positive dailyVarLimit, any Gate 3 "
-            "Approve implies the portfolio's linear-VaR upper bound "
-            "(|notional|·volatility, correlation-weighted across existing "
-            "positions plus the new proposal) stays within that limit. "
-            "The linear bound is a triangle-inequality upper bound on "
-            "quadratic-form VaR (√xᵀΣx), so the limit transfers to the "
-            "tighter bound automatically.",
+            "Approve implies the portfolio's proposal-axis projected-"
+            "exposure bound (portfolioVarBound: |notional|·volatility, "
+            "weighted for existing positions by their absolute "
+            "correlation with the proposal's asset, plus the proposal "
+            "itself) stays within that limit. NOTE: portfolioVarBound "
+            "is NOT in general an upper bound on full-portfolio "
+            "√xᵀΣx — it does not consult correlations among existing "
+            "positions. dailyVarLimit bounds the projected exposure "
+            "along the proposal's asset direction. See "
+            "docs/var-audit-2026-04-23.md for scope-of-validity "
+            "analysis.",
         "axioms_used": [],
     },
     "checkPortfolio_resize_at_most_nonneg_proposal": {
@@ -291,11 +296,15 @@ THEOREMS: dict[str, dict] = {
         "status": "proven",
         "statement_natural_language":
             "If Gate 3 resizes a proposal and the caller set a positive "
-            "dailyVarLimit, then the input proposal's linear VaR upper "
-            "bound stays within the limit. The VaR guard precedes the "
-            "Resize branch in the dispatch chain, so by the time we reach "
-            "Resize the guard must not have fired. Twin of "
-            "checkPortfolio_approve_respects_var_bound for the Resize path.",
+            "dailyVarLimit, then the input proposal's proposal-axis "
+            "projected-exposure bound (portfolioVarBound) stays within "
+            "the limit. The VaR guard precedes the Resize branch in the "
+            "dispatch chain, so by the time we reach Resize the guard "
+            "must not have fired. Twin of "
+            "checkPortfolio_approve_respects_var_bound for the Resize "
+            "path. Same semantics caveat: the bound is on projected "
+            "exposure along the proposal's asset, not on full-portfolio "
+            "√xᵀΣx.",
         "axioms_used": [],
     },
     "portfolioVarBound_mono_in_abs_notional": {
@@ -357,14 +366,19 @@ THEOREMS: dict[str, dict] = {
         "file": "Veritas/Gates/Certificate.lean",
         "status": "proven",
         "statement_natural_language":
-            "When the caller opts into VaR gating (dailyVarLimit > 0) "
-            "and the proposal's volatility is non-negative, any "
-            "approving certificate guarantees the portfolio's linear-VaR "
-            "upper bound evaluated at finalNotionalUsd stays within the "
-            "limit. Completes the three-gate composed-soundness story: "
-            "every Approve path respects the Gate-2 Kelly ceiling, the "
+            "When the caller opts into projected-exposure gating "
+            "(dailyVarLimit > 0) and the proposal's volatility is "
+            "non-negative, any approving certificate guarantees the "
+            "portfolio's projected-exposure bound (portfolioVarBound) "
+            "evaluated at finalNotionalUsd stays within the limit. "
+            "Completes the three-gate composed-soundness story: every "
+            "Approve path respects the Gate-2 Kelly ceiling, the "
             "Gate-3 gross-exposure cap, AND (when enabled) the Gate-3 "
-            "VaR upper bound, all simultaneously.",
+            "projected-exposure bound, all simultaneously. Semantics "
+            "caveat: see portfolioVarBound's entry and "
+            "docs/var-audit-2026-04-23.md — the bound is on projected "
+            "exposure along the proposal's asset direction, not on "
+            "full-portfolio √xᵀΣx.",
         "axioms_used": [],
     },
 }

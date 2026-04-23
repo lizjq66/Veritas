@@ -106,6 +106,16 @@ if cert.approves:
 
 The SDK surface (`python/sdk.py`) is deliberately `veritas-core`-free — no Lean binary, no subprocess, zero dependency on the verifier side. An agent that only talks to Veritas over HTTP or MCP does not need to install or run the Lean kernel locally.
 
+### `dailyVarLimit` semantics (read before setting)
+
+Gate 3's VaR check compares a quantity Veritas calls `portfolioVarBound` against the caller-supplied `dailyVarLimit`. `portfolioVarBound` is a **projected-exposure bound** — an exact triangle-inequality upper bound on
+
+    |x₀·σ₀ + Σᵢ xᵢ·σᵢ·ρ₀ᵢ|
+
+i.e. the absolute combined exposure along the proposal's asset return factor. It is **not** an upper bound on full-portfolio 1-day return stddev `√xᵀΣx`; two mutually correlated existing positions that are each uncorrelated with the proposal's asset will contribute 0 to `portfolioVarBound` while still carrying real portfolio variance.
+
+Set `dailyVarLimit` as a cap on *per-proposal projected exposure*, not on whole-portfolio stddev. If you need the stronger stddev guarantee, `portfolioVarBound` is not the right input — see [`docs/var-audit-2026-04-23.md`](docs/var-audit-2026-04-23.md) for the full analysis and remediation options.
+
 ## Docs
 
 - **[`docs/paper/veritas.tex`](docs/paper/veritas.tex)** — paper (LaTeX, `make` to build PDF)

@@ -49,16 +49,39 @@ def correlationAdjustedExposure
         correlationBetween port.correlations pos.asset p.asset)
     0
 
-/-- Linear upper bound on daily portfolio VaR after adding the
-    proposal. For each existing position, contributes
+/-- **Proposal-axis projected exposure bound.**
+
+    For each existing position, contributes
     `|notional| × volatility × |correlation with proposal.asset|`;
     the proposal's own contribution is `|notional| × volatility`.
 
-    This is an *upper bound* on the quadratic-form VaR
-    (√xᵀΣx) via the triangle inequality, which lets Gate 3's VaR
-    check stay inside exact `Rat` arithmetic — no square roots,
-    no numeric approximation. If the linear bound fits the limit,
-    the true VaR does too. -/
+    What this quantity actually bounds (by triangle inequality):
+
+        |x₀·σ₀ + Σᵢ xᵢ·σᵢ·ρ₀ᵢ|   ≤   portfolioVarBound port p
+
+    i.e. the absolute **projected exposure** of the combined
+    portfolio along the proposal's asset return factor. Equivalently:
+    "how much combined directional risk would I take on along the
+    proposal's own volatility axis."
+
+    What it does **NOT** bound in general:
+    the full-portfolio quadratic-form VaR `√xᵀΣx`. The formula
+    consults only correlations **between each existing position and
+    the proposal** (`ρ₀ᵢ`); it ignores correlations **among existing
+    positions** (`ρᵢⱼ` for `i,j ≠ 0`), so two mutually-correlated
+    existing positions can contribute 0 to this bound (if each is
+    uncorrelated with the proposal) while still jointly carrying
+    real portfolio variance.
+
+    Callers setting `AccountConstraints.dailyVarLimit` should
+    interpret it as a limit on this *projected exposure*, not on
+    full-portfolio stddev. See `docs/var-audit-2026-04-23.md` for
+    worked counter-examples and the full scope-of-validity
+    analysis.
+
+    The projected-exposure bound is an *exact* upper bound inside
+    `Rat` arithmetic — no square roots, no numeric approximation —
+    which is why this definition stays in Gate 3's hot path. -/
 def portfolioVarBound
     (port : Portfolio) (p : TradeProposal) : Rat :=
   let existing := port.positions.foldl
@@ -144,11 +167,16 @@ theorem checkPortfolio_approve_respects_cap
           · cases h'
           · cases h'
 
-/-- Gate 3 soundness (approve, VaR): when the caller sets a positive
-    `dailyVarLimit`, the portfolio's linear VaR upper bound stays
-    within it. The linear bound is a true upper bound on
-    quadratic-form VaR (√xᵀΣx), so respecting the linear limit
-    implies respecting the quadratic one. -/
+/-- Gate 3 soundness (approve, projected-exposure): when the caller
+    sets a positive `dailyVarLimit`, any Approve implies the
+    portfolio's proposal-axis projected-exposure bound
+    (`portfolioVarBound`) stays within it.
+
+    **Semantics caveat.** `dailyVarLimit` is a limit on
+    `portfolioVarBound` as defined above, which bounds projected
+    exposure along the proposal's asset — it is *not* a limit on
+    full-portfolio `√xᵀΣx`. See `portfolioVarBound`'s docstring
+    and `docs/var-audit-2026-04-23.md`. -/
 theorem checkPortfolio_approve_respects_var_bound
     (p : TradeProposal) (port : Portfolio) (c : AccountConstraints)
     (hpos : c.dailyVarLimit > 0)
@@ -277,13 +305,17 @@ theorem checkPortfolio_resize_nonneg
             rw [← hm]
             exact lt_of_not_ge hheadroom
 
-/-- Gate 3 resize soundness (VaR): when the caller sets a positive
-    `dailyVarLimit`, any Resize verdict also implies the input
-    proposal's linear VaR upper bound stays within the limit. The VaR
-    guard is an earlier branch than the Resize path in the if-else
-    chain, so by the time we reach Resize the guard must have failed
-    to fire — giving us exactly this bound. Twin of
-    `_approve_respects_var_bound` for the Resize path. -/
+/-- Gate 3 resize soundness (projected-exposure): when the caller
+    sets a positive `dailyVarLimit`, any Resize verdict also implies
+    the input proposal's `portfolioVarBound` stays within the limit.
+    The VaR guard is an earlier branch than the Resize path in the
+    if-else chain, so by the time we reach Resize the guard must
+    have failed to fire — giving us exactly this bound. Twin of
+    `_approve_respects_var_bound` for the Resize path.
+
+    **Semantics caveat.** See `portfolioVarBound`'s docstring:
+    `dailyVarLimit` bounds projected exposure along the proposal's
+    asset, not full-portfolio `√xᵀΣx`. -/
 theorem checkPortfolio_resize_respects_var_bound
     (p : TradeProposal) (port : Portfolio) (c : AccountConstraints)
     (m : Rat)
