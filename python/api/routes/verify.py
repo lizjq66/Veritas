@@ -155,9 +155,12 @@ async def verify_proposal(req: VerifyRequest) -> dict:
 @router.get("/verify/pubkey")
 async def verify_pubkey() -> dict:
     """Return the Verifier's Ed25519 public key, attested build sha,
-    and schema version. Callers fetch this once (trust-on-first-use)
-    and verify every subsequent Certificate's attestation against
-    the same key."""
+    pinned theorem-registry sha, and schema version. Callers fetch
+    this once (trust-on-first-use) and verify every subsequent
+    Certificate's attestation against the same key, optionally
+    cross-checking ``build_sha`` and ``theorem_registry_sha`` against
+    a pinned snapshot they trust."""
+    from python.api.theorem_registry import compute_theorem_registry_sha
     from python.attestation import CURRENT_SCHEMA_VERSION, VERITAS_VERSION
 
     v = _get_verifier()
@@ -174,8 +177,29 @@ async def verify_pubkey() -> dict:
         "algorithm": "ed25519",
         "public_key": pk,
         "build_sha": v.build_sha,
+        "theorem_registry_sha": compute_theorem_registry_sha(),
         "veritas_version": VERITAS_VERSION,
         "schema_version": CURRENT_SCHEMA_VERSION,
+    }
+
+
+@router.get("/verify/theorems")
+async def verify_theorems() -> dict:
+    """Return the full theorem registry along with its pinned sha256.
+
+    This is the bulk of what ``/verify/pubkey`` summarizes by hash.
+    Callers who want to audit "does this build_sha actually claim to
+    prove the theorems I need" fetch this endpoint once, inspect the
+    list, and pin the returned ``theorem_registry_sha`` alongside
+    ``build_sha`` at trust-setup time."""
+    from python.api.theorem_registry import (
+        THEOREMS,
+        compute_theorem_registry_sha,
+    )
+    return {
+        "theorem_registry_sha": compute_theorem_registry_sha(),
+        "count": len(THEOREMS),
+        "theorems": THEOREMS,
     }
 
 
