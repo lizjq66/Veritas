@@ -192,6 +192,46 @@ THEOREMS: dict[str, dict] = {
             "zero-observation behavior.",
         "axioms_used": [],
     },
+    # ── v0.4 Slice 2: Bayesian position sizing ────────────────────
+    # Parallel to the frequentist calculatePositionSize but driven by
+    # a BetaPosterior. Not yet wired into Gate 2 — integration slice
+    # follows.
+    "positionSize_fromPosterior_nonneg": {
+        "gate": 2,
+        "file": "Veritas/Finance/PositionSizing.lean",
+        "status": "proven",
+        "statement_natural_language":
+            "Bayesian post-exploration position size is non-negative "
+            "when the equity is non-negative and the BetaPosterior's "
+            "priors are non-negative with strictly positive sum. "
+            "Analog of positionSize_nonneg for the posterior-driven "
+            "sizer.",
+        "axioms_used": [],
+    },
+    "positionSize_fromPosterior_capped": {
+        "gate": 2,
+        "file": "Veritas/Finance/PositionSizing.lean",
+        "status": "proven",
+        "statement_natural_language":
+            "Bayesian post-exploration position size never exceeds the "
+            "same 25%-of-equity cap that calculatePositionSize enforces. "
+            "Analog of positionSize_capped for the posterior-driven "
+            "sizer.",
+        "axioms_used": [],
+    },
+    "positionSize_fromPosterior_zero_at_no_edge": {
+        "gate": 2,
+        "file": "Veritas/Finance/PositionSizing.lean",
+        "status": "proven",
+        "statement_natural_language":
+            "Bayesian post-exploration position size is zero whenever "
+            "the posterior mean is ≤ 1/2 — the Bayesian 'no edge' "
+            "state. Analog of positionSize_zero_at_no_edge for the "
+            "posterior-driven sizer; matches the frequentist cutoff so "
+            "Gate 2's semantics around the no-edge line carries over "
+            "unchanged when the posterior sizer is wired in.",
+        "axioms_used": [],
+    },
     # ── Gate-layer soundness contracts ─────────────────────────────
     # These are first-class theorems in Veritas/Gates/*.lean; they
     # document what each gate's Approve / Resize verdict *means*
