@@ -274,6 +274,45 @@ THEOREMS: dict[str, dict] = {
             "checkPortfolio_approve_respects_cap for the Resize path.",
         "axioms_used": [],
     },
+    "checkPortfolio_resize_nonneg": {
+        "gate": 3,
+        "file": "Veritas/Gates/PortfolioGate.lean",
+        "status": "proven",
+        "statement_natural_language":
+            "If Gate 3 resizes a proposal to m, then m is strictly "
+            "positive. The Resize branch is past the "
+            "`cap − adjusted ≤ 0` rejection and the resize value equals "
+            "`cap − adjusted`.",
+        "axioms_used": [],
+    },
+    "checkPortfolio_resize_respects_var_bound": {
+        "gate": 3,
+        "file": "Veritas/Gates/PortfolioGate.lean",
+        "status": "proven",
+        "statement_natural_language":
+            "If Gate 3 resizes a proposal and the caller set a positive "
+            "dailyVarLimit, then the input proposal's linear VaR upper "
+            "bound stays within the limit. The VaR guard precedes the "
+            "Resize branch in the dispatch chain, so by the time we reach "
+            "Resize the guard must not have fired. Twin of "
+            "checkPortfolio_approve_respects_var_bound for the Resize path.",
+        "axioms_used": [],
+    },
+    "portfolioVarBound_mono_in_abs_notional": {
+        "gate": 3,
+        "file": "Veritas/Gates/PortfolioGate.lean",
+        "status": "proven",
+        "statement_natural_language":
+            "portfolioVarBound is monotone in |p.notionalUsd| when "
+            "volatility is non-negative. Because the existing-positions "
+            "contribution depends only on p.asset (preserved by struct "
+            "update) and the proposal's contribution is "
+            "|notional|·volatility, tighter |notional| tightens the bound "
+            "whenever volatility ≥ 0. Lets the certificate-level VaR "
+            "theorem carry a Gate-3-input bound down to the final "
+            "(possibly resized) notional.",
+        "axioms_used": [],
+    },
     "certificate_soundness": {
         "gate": "combined",
         "file": "Veritas/Gates/Certificate.lean",
@@ -311,6 +350,21 @@ THEOREMS: dict[str, dict] = {
             "correlation-weighted exposure bound: every Approve path "
             "respects BOTH the Gate-2 Kelly ceiling AND the Gate-3 cap "
             "simultaneously.",
+        "axioms_used": [],
+    },
+    "certificate_approve_final_within_gate3_var_bound": {
+        "gate": "combined",
+        "file": "Veritas/Gates/Certificate.lean",
+        "status": "proven",
+        "statement_natural_language":
+            "When the caller opts into VaR gating (dailyVarLimit > 0) "
+            "and the proposal's volatility is non-negative, any "
+            "approving certificate guarantees the portfolio's linear-VaR "
+            "upper bound evaluated at finalNotionalUsd stays within the "
+            "limit. Completes the three-gate composed-soundness story: "
+            "every Approve path respects the Gate-2 Kelly ceiling, the "
+            "Gate-3 gross-exposure cap, AND (when enabled) the Gate-3 "
+            "VaR upper bound, all simultaneously.",
         "axioms_used": [],
     },
 }

@@ -237,6 +237,114 @@ theorem checkPortfolio_resize_respects_cap
             rw [habs, ← hm]
             linarith
 
+/-- Gate 3's resize value is strictly positive: the Resize branch is
+    only reached past the `cap - adjusted ≤ 0` rejection, and the
+    resize value equals `cap - adjusted`. -/
+theorem checkPortfolio_resize_nonneg
+    (p : TradeProposal) (port : Portfolio) (c : AccountConstraints)
+    (m : Rat)
+    (h : checkPortfolio p port c = .Resize m) :
+    0 < m := by
+  have h' :
+      (if hasDirectionConflict port.positions p then
+        Verdict.Reject ["direction_conflicts_existing_position"]
+       else if c.equity * port.maxGrossExposureFraction ≤ 0 then
+        Verdict.Reject ["gross_exposure_cap_non_positive"]
+       else if c.dailyVarLimit > 0 ∧ portfolioVarBound port p > c.dailyVarLimit then
+        Verdict.Reject ["portfolio_var_limit_exceeded"]
+       else if correlationAdjustedExposure port p + |p.notionalUsd|
+              ≤ c.equity * port.maxGrossExposureFraction then
+        Verdict.Approve
+       else if c.equity * port.maxGrossExposureFraction
+               - correlationAdjustedExposure port p ≤ 0 then
+        Verdict.Reject ["portfolio_already_at_correlation_weighted_cap"]
+       else
+        Verdict.Resize (c.equity * port.maxGrossExposureFraction
+                         - correlationAdjustedExposure port p))
+        = .Resize m := h
+  split at h'
+  · cases h'
+  · split at h'
+    · cases h'
+    · split at h'
+      · cases h'
+      · split at h'
+        · cases h'
+        · split at h'
+          · cases h'
+          · injection h' with hm
+            rename_i _hdc _hcap _hvar _htotal hheadroom
+            rw [← hm]
+            exact lt_of_not_ge hheadroom
+
+/-- Gate 3 resize soundness (VaR): when the caller sets a positive
+    `dailyVarLimit`, any Resize verdict also implies the input
+    proposal's linear VaR upper bound stays within the limit. The VaR
+    guard is an earlier branch than the Resize path in the if-else
+    chain, so by the time we reach Resize the guard must have failed
+    to fire — giving us exactly this bound. Twin of
+    `_approve_respects_var_bound` for the Resize path. -/
+theorem checkPortfolio_resize_respects_var_bound
+    (p : TradeProposal) (port : Portfolio) (c : AccountConstraints)
+    (m : Rat)
+    (hpos : c.dailyVarLimit > 0)
+    (h : checkPortfolio p port c = .Resize m) :
+    portfolioVarBound port p ≤ c.dailyVarLimit := by
+  have h' :
+      (if hasDirectionConflict port.positions p then
+        Verdict.Reject ["direction_conflicts_existing_position"]
+       else if c.equity * port.maxGrossExposureFraction ≤ 0 then
+        Verdict.Reject ["gross_exposure_cap_non_positive"]
+       else if c.dailyVarLimit > 0 ∧ portfolioVarBound port p > c.dailyVarLimit then
+        Verdict.Reject ["portfolio_var_limit_exceeded"]
+       else if correlationAdjustedExposure port p + |p.notionalUsd|
+              ≤ c.equity * port.maxGrossExposureFraction then
+        Verdict.Approve
+       else if c.equity * port.maxGrossExposureFraction
+               - correlationAdjustedExposure port p ≤ 0 then
+        Verdict.Reject ["portfolio_already_at_correlation_weighted_cap"]
+       else
+        Verdict.Resize (c.equity * port.maxGrossExposureFraction
+                         - correlationAdjustedExposure port p))
+        = .Resize m := h
+  split at h'
+  · cases h'
+  · split at h'
+    · cases h'
+    · split at h'
+      · cases h'
+      · split at h'
+        · cases h'
+        · split at h'
+          · cases h'
+          · -- Resize branch. Position 3 (oldest-first) is the
+            -- VaR guard's negation: ¬ (dailyVarLimit > 0 ∧ varBound > limit).
+            rename_i _hdc _hcap hvarguard _htotal _hheadroom
+            by_contra hgt
+            exact hvarguard ⟨hpos, lt_of_not_ge hgt⟩
+
+/-- Monotonicity of `portfolioVarBound` in the absolute value of the
+    proposal's notional, given non-negative volatility. Since
+    `portfolioVarBound` decomposes as (existing positions' contribution,
+    depending only on `p.asset`) + `|p.notionalUsd| * p.volatility`, a
+    tighter |notional| tightens the bound when `volatility ≥ 0`. Lets
+    the certificate-level VaR theorem transfer a bound at the Gate-3
+    input down to the potentially smaller final notional. -/
+theorem portfolioVarBound_mono_in_abs_notional
+    (port : Portfolio) (p : TradeProposal) (m k : Rat)
+    (hvol : 0 ≤ p.volatility)
+    (hle : |m| ≤ |k|) :
+    portfolioVarBound port { p with notionalUsd := m }
+      ≤ portfolioVarBound port { p with notionalUsd := k } := by
+  -- Both sides share the same `existing` term (fold over port.positions
+  -- depending only on p.asset, which is preserved by struct update).
+  -- `simp only [portfolioVarBound]` beta-reduces the `let existing`
+  -- binding so the inequality reduces to `|m|·vol ≤ |k|·vol`.
+  simp only [portfolioVarBound]
+  have hmul : |m| * p.volatility ≤ |k| * p.volatility :=
+    mul_le_mul_of_nonneg_right hle hvol
+  linarith
+
 /-- Gate 3 resize is bounded above by the **submitted proposal's**
     notional whenever that notional is non-negative: the Resize branch
     is only reached when `adjusted + |p.notionalUsd| > cap`, so

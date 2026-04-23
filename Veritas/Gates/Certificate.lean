@@ -335,4 +335,121 @@ theorem certificate_approve_final_within_gate3_cap
         simp [emitCertificate, hv, hg1, hg2, hg3]
         simpa using hcap
 
+
+/-- **Composed soundness — Gate 3 VaR upper bound carries through.**
+
+    When the caller opts into VaR gating (`dailyVarLimit > 0`) and the
+    proposal's volatility is non-negative, any approving certificate
+    guarantees the portfolio's linear-VaR upper bound evaluated at the
+    FINAL notional stays within the limit. Together with
+    `certificate_approve_final_within_gate3_cap` this gives every
+    Approve path a numeric bound on BOTH independent Gate-3
+    constraints, not just on whichever one Gate 3 was most directly
+    checking at that particular input.
+
+    The non-obvious half of the proof: when Gate 3 resizes from size2
+    down to `m`, the VaR guard was checked at `{p with notional := size2}`,
+    but the certificate's `finalNotionalUsd` equals `m`. Non-negativity
+    of volatility plus `|m| ≤ |size2|` (from the resize-shrinks helper)
+    lets `portfolioVarBound_mono_in_abs_notional` transfer the
+    size2-level bound down to `m`. -/
+theorem certificate_approve_final_within_gate3_var_bound
+    (p : TradeProposal) (c : AccountConstraints) (port : Portfolio)
+    (hvol : 0 ≤ p.volatility)
+    (hvar : 0 < c.dailyVarLimit)
+    (h : (emitCertificate p c port).approves = true) :
+    portfolioVarBound port
+        { p with notionalUsd := (emitCertificate p c port).finalNotionalUsd }
+      ≤ c.dailyVarLimit := by
+  rcases hv : verifySignal p with ⟨g1, assums⟩
+  cases hg1 : g1 with
+  | Reject codes =>
+    exfalso
+    simp [emitCertificate, hv, hg1, Certificate.approves, Verdict.isReject] at h
+  | Resize n =>
+    -- verifySignal never returns .Resize; lifted argument.
+    exfalso
+    have hv1 : (verifySignal p).1 = .Resize n := by rw [hv]; exact hg1
+    unfold verifySignal at hv1
+    cases hsig : firingSignals (snapshotOf p) with
+    | nil => rw [hsig] at hv1; cases hv1
+    | cons s rest =>
+      rw [hsig] at hv1
+      by_cases hmc : mutuallyConsistent (s :: rest) = true
+      · simp only [hmc, if_true] at hv1
+        by_cases hdir : (s.direction == p.direction) = true
+        · simp only [hdir, if_true] at hv1
+          cases hlist : attachedAssumptions (snapshotOf p) p.direction with
+          | nil => rw [hlist] at hv1; cases hv1
+          | cons x xs => rw [hlist] at hv1; cases hv1
+        · simp only [hdir, if_false] at hv1; cases hv1
+      · have hmcf : mutuallyConsistent (s :: rest) = false := by
+          cases hval : mutuallyConsistent (s :: rest)
+          · rfl
+          · exact absurd hval hmc
+        simp only [hmcf, if_false] at hv1; cases hv1
+  | Approve =>
+    cases hg2 : checkConstraints p c with
+    | Reject codes =>
+      exfalso
+      simp [emitCertificate, hv, hg1, hg2, Certificate.approves, Verdict.isReject] at h
+    | Approve =>
+      have h_pnn := checkConstraints_approve_implies_proposal_nonneg p c hg2
+      cases hg3 : checkPortfolio { p with notionalUsd := p.notionalUsd } port c with
+      | Reject codes =>
+        exfalso
+        simp [emitCertificate, hv, hg1, hg2, hg3, Certificate.approves, Verdict.isReject] at h
+      | Approve =>
+        have hvb := checkPortfolio_approve_respects_var_bound
+                      { p with notionalUsd := p.notionalUsd } port c hvar hg3
+        simp [emitCertificate, hv, hg1, hg2, hg3]
+        simpa using hvb
+      | Resize m =>
+        have hvb := checkPortfolio_resize_respects_var_bound
+                      { p with notionalUsd := p.notionalUsd } port c m hvar hg3
+        have h_m_pos := checkPortfolio_resize_nonneg
+                          { p with notionalUsd := p.notionalUsd } port c m hg3
+        have h_m_le := checkPortfolio_resize_at_most_nonneg_proposal
+                         { p with notionalUsd := p.notionalUsd } port c m
+                         (by simpa using h_pnn) hg3
+        -- |m| = m, |p.notionalUsd| = p.notionalUsd, m ≤ p.notionalUsd.
+        have h_abs : |m| ≤ |p.notionalUsd| := by
+          rw [abs_of_nonneg (le_of_lt h_m_pos), abs_of_nonneg h_pnn]
+          simpa using h_m_le
+        have h_mono := portfolioVarBound_mono_in_abs_notional
+                         port p m p.notionalUsd hvol h_abs
+        simp [emitCertificate, hv, hg1, hg2, hg3]
+        calc portfolioVarBound port { p with notionalUsd := m }
+            ≤ portfolioVarBound port { p with notionalUsd := p.notionalUsd }
+                := h_mono
+          _ ≤ c.dailyVarLimit := by simpa using hvb
+    | Resize n =>
+      have h_n_nn := checkConstraints_resize_nonneg p c n hg2
+      cases hg3 : checkPortfolio { p with notionalUsd := n } port c with
+      | Reject codes =>
+        exfalso
+        simp [emitCertificate, hv, hg1, hg2, hg3, Certificate.approves, Verdict.isReject] at h
+      | Approve =>
+        have hvb := checkPortfolio_approve_respects_var_bound
+                      { p with notionalUsd := n } port c hvar hg3
+        simp [emitCertificate, hv, hg1, hg2, hg3]
+        simpa using hvb
+      | Resize m =>
+        have hvb := checkPortfolio_resize_respects_var_bound
+                      { p with notionalUsd := n } port c m hvar hg3
+        have h_m_pos := checkPortfolio_resize_nonneg
+                          { p with notionalUsd := n } port c m hg3
+        have h_m_le := checkPortfolio_resize_at_most_nonneg_proposal
+                         { p with notionalUsd := n } port c m
+                         (by simpa using h_n_nn) hg3
+        have h_abs : |m| ≤ |n| := by
+          rw [abs_of_nonneg (le_of_lt h_m_pos), abs_of_nonneg h_n_nn]
+          simpa using h_m_le
+        have h_mono := portfolioVarBound_mono_in_abs_notional
+                         port p m n hvol h_abs
+        simp [emitCertificate, hv, hg1, hg2, hg3]
+        calc portfolioVarBound port { p with notionalUsd := m }
+            ≤ portfolioVarBound port { p with notionalUsd := n } := h_mono
+          _ ≤ c.dailyVarLimit := by simpa using hvb
+
 end Veritas.Gates
