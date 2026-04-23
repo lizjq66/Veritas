@@ -298,6 +298,33 @@ THEOREMS: dict[str, dict] = {
             "Gate 2 never inflates the caller's request.",
         "axioms_used": [],
     },
+    # ── v0.4 Slice 3: Bayesian Gate 2 dispatch ────────────────────
+    # Parallel to checkConstraints but reads sizing from a Beta
+    # posterior. Not yet wired into certificate composition; a
+    # follow-on slice migrates AccountConstraints and reroutes the
+    # HTTP / MCP surfaces.
+    "checkConstraintsBayesian_approve_within_ceiling": {
+        "gate": 2,
+        "file": "Veritas/Gates/ConstraintGate.lean",
+        "status": "proven",
+        "statement_natural_language":
+            "If the Bayesian Gate 2 dispatch approves, the submitted "
+            "notional is at most the posterior-driven ceiling "
+            "calculatePositionSizeFromPosterior. Bayesian analog of "
+            "checkConstraints_approve_within_ceiling.",
+        "axioms_used": [],
+    },
+    "checkConstraintsBayesian_resize_respects_ceiling": {
+        "gate": 2,
+        "file": "Veritas/Gates/ConstraintGate.lean",
+        "status": "proven",
+        "statement_natural_language":
+            "If the Bayesian Gate 2 dispatch resizes to n, then n is "
+            "at most the posterior-driven ceiling "
+            "calculatePositionSizeFromPosterior. Bayesian analog of "
+            "checkConstraints_resize_respects_ceiling.",
+        "axioms_used": [],
+    },
     "checkPortfolio_approve_respects_cap": {
         "gate": 3,
         "file": "Veritas/Gates/PortfolioGate.lean",

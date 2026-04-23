@@ -202,4 +202,92 @@ theorem checkConstraints_resize_at_most_proposal
           rw [← hn]
           exact le_of_lt (lt_of_not_ge hnle)
 
+
+-- ── Bayesian Gate 2 (v0.4 Slice 3) ────────────────────────────────
+--
+-- Parallel to `checkConstraints` but reads its reliability /
+-- sample-size inputs from a `BetaPosterior` rather than from
+-- `AccountConstraints.(reliability, sampleSize)`. Exact structural
+-- twin of the frequentist dispatch; only the sizer call and the
+-- caller-supplied inputs change.
+--
+-- This slice is additive only. `checkConstraints` stays the Gate 2
+-- entry point; certificate composition still routes through it.
+-- A follow-on slice replaces AccountConstraints's frequentist
+-- fields with posterior inputs and re-derives the composition
+-- theorems against this function.
+
+open Veritas.Finance Veritas.Learning
+
+/-- Gate 2 dispatch over a Bayesian posterior. Same four-way
+    reject / approve / resize structure as `checkConstraints`, but
+    the reliability ceiling comes from
+    `calculatePositionSizeFromPosterior`. -/
+def checkConstraintsBayesian
+    (p : TradeProposal) (equity : Rat) (b : BetaPosterior)
+    (maxLev : Rat) : Verdict :=
+  let allowed := calculatePositionSizeFromPosterior equity b
+  if maxLev ≤ 0 then
+    .Reject ["leverage_cap_non_positive"]
+  else if allowed ≤ 0 then
+    .Reject ["no_edge_reliability_below_threshold"]
+  else if p.notionalUsd ≤ 0 then
+    .Reject ["proposal_notional_non_positive"]
+  else if p.notionalUsd ≤ allowed then
+    .Approve
+  else
+    .Resize allowed
+
+theorem checkConstraintsBayesian_approve_within_ceiling
+    (p : TradeProposal) (equity : Rat) (b : BetaPosterior) (maxLev : Rat)
+    (h : checkConstraintsBayesian p equity b maxLev = .Approve) :
+    p.notionalUsd ≤ calculatePositionSizeFromPosterior equity b := by
+  have h' :
+      (if maxLev ≤ 0 then
+        Verdict.Reject ["leverage_cap_non_positive"]
+       else if calculatePositionSizeFromPosterior equity b ≤ 0 then
+        Verdict.Reject ["no_edge_reliability_below_threshold"]
+       else if p.notionalUsd ≤ 0 then
+        Verdict.Reject ["proposal_notional_non_positive"]
+       else if p.notionalUsd ≤ calculatePositionSizeFromPosterior equity b then
+        Verdict.Approve
+       else .Resize (calculatePositionSizeFromPosterior equity b))
+        = .Approve := h
+  split at h'
+  · cases h'
+  · split at h'
+    · cases h'
+    · split at h'
+      · cases h'
+      · split at h'
+        · rename_i hle; exact hle
+        · cases h'
+
+theorem checkConstraintsBayesian_resize_respects_ceiling
+    (p : TradeProposal) (equity : Rat) (b : BetaPosterior) (maxLev : Rat)
+    (n : Rat)
+    (h : checkConstraintsBayesian p equity b maxLev = .Resize n) :
+    n ≤ calculatePositionSizeFromPosterior equity b := by
+  have h' :
+      (if maxLev ≤ 0 then
+        Verdict.Reject ["leverage_cap_non_positive"]
+       else if calculatePositionSizeFromPosterior equity b ≤ 0 then
+        Verdict.Reject ["no_edge_reliability_below_threshold"]
+       else if p.notionalUsd ≤ 0 then
+        Verdict.Reject ["proposal_notional_non_positive"]
+       else if p.notionalUsd ≤ calculatePositionSizeFromPosterior equity b then
+        Verdict.Approve
+       else .Resize (calculatePositionSizeFromPosterior equity b))
+        = .Resize n := h
+  split at h'
+  · cases h'
+  · split at h'
+    · cases h'
+    · split at h'
+      · cases h'
+      · split at h'
+        · cases h'
+        · injection h' with hn
+          rw [← hn]
+
 end Veritas.Gates
