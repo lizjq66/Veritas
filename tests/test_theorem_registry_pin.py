@@ -73,7 +73,8 @@ def test_verify_theorems_endpoint_returns_full_registry():
     assert r.status_code == 200
     d = r.json()
     assert d["theorem_registry_sha"] == reg.compute_theorem_registry_sha()
-    assert d["count"] == len(reg.THEOREMS) == 20
+    assert d["count"] == len(reg.THEOREMS)
+    assert d["count"] == len(_lean_theorem_names())  # registry ↔ Lean parity
     assert set(d["theorems"].keys()) == set(reg.THEOREMS.keys())
 
 

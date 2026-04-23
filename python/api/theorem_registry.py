@@ -189,6 +189,37 @@ THEOREMS: dict[str, dict] = {
             "the reliability-adjusted ceiling.",
         "axioms_used": [],
     },
+    "checkConstraints_approve_implies_proposal_nonneg": {
+        "gate": 2,
+        "file": "Veritas/Gates/ConstraintGate.lean",
+        "status": "proven",
+        "statement_natural_language":
+            "If Gate 2 approves a proposal, its notional is non-negative. "
+            "Follows from Gate 2 rejecting on `p.notionalUsd ≤ 0`.",
+        "axioms_used": [],
+    },
+    "checkConstraints_resize_nonneg": {
+        "gate": 2,
+        "file": "Veritas/Gates/ConstraintGate.lean",
+        "status": "proven",
+        "statement_natural_language":
+            "If Gate 2 resizes a proposal, the resize value is non-negative. "
+            "The Resize branch is past the `calculatePositionSize ≤ 0` "
+            "rejection, so the resize value (which equals that quantity) "
+            "is strictly positive.",
+        "axioms_used": [],
+    },
+    "checkConstraints_resize_at_most_proposal": {
+        "gate": 2,
+        "file": "Veritas/Gates/ConstraintGate.lean",
+        "status": "proven",
+        "statement_natural_language":
+            "If Gate 2 resizes a proposal to n, then n is at most the "
+            "submitted proposal's notional. Together with "
+            "checkConstraints_resize_respects_ceiling, witnesses that "
+            "Gate 2 never inflates the caller's request.",
+        "axioms_used": [],
+    },
     "checkPortfolio_approve_respects_cap": {
         "gate": 3,
         "file": "Veritas/Gates/PortfolioGate.lean",
@@ -216,6 +247,20 @@ THEOREMS: dict[str, dict] = {
             "tighter bound automatically.",
         "axioms_used": [],
     },
+    "checkPortfolio_resize_at_most_nonneg_proposal": {
+        "gate": 3,
+        "file": "Veritas/Gates/PortfolioGate.lean",
+        "status": "proven",
+        "statement_natural_language":
+            "When the submitted proposal's notional is non-negative, any "
+            "Gate 3 Resize value is at most that notional. Gate 3 only "
+            "Resizes when the correlation-adjusted exposure plus "
+            "|notional| exceeds the cap, which implies the resize value "
+            "(cap minus adjusted exposure) is strictly below |notional|. "
+            "Witnesses that Gate 3 never inflates the proposal it "
+            "received from Gate 2.",
+        "axioms_used": [],
+    },
     "certificate_soundness": {
         "gate": "combined",
         "file": "Veritas/Gates/Certificate.lean",
@@ -226,6 +271,19 @@ THEOREMS: dict[str, dict] = {
             "not a rejection, and Gate 3's verdict is not a rejection. "
             "Numeric bounds for Gates 2 and 3 follow from their per-gate "
             "theorems.",
+        "axioms_used": [],
+    },
+    "certificate_approve_final_within_gate2_ceiling": {
+        "gate": "combined",
+        "file": "Veritas/Gates/Certificate.lean",
+        "status": "proven",
+        "statement_natural_language":
+            "If an emitted certificate approves, its finalNotionalUsd is "
+            "at most the Gate-2 reliability-adjusted ceiling. Strengthens "
+            "certificate_soundness with a numeric bound: Gate 3's possible "
+            "downstream resize can only shrink Gate 2's output, never "
+            "widen it, so the Gate-2 ceiling dominates every Approve path "
+            "through the three-gate composition.",
         "axioms_used": [],
     },
 }

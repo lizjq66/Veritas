@@ -14,7 +14,7 @@ import Veritas.Gates.PortfolioGate
 
 namespace Veritas.Gates
 
-open Veritas Veritas.Strategy
+open Veritas Veritas.Strategy Veritas.Finance
 
 /-- Run all three gates and emit a Certificate.
 
@@ -150,5 +150,104 @@ theorem certificate_soundness
         refine ⟨hsigcon, ?_, ?_⟩
         · simp [emitCertificate, hv, hg1, hg2, hg3, Verdict.isReject]
         · simp [emitCertificate, hv, hg1, hg2, hg3, Verdict.isReject]
+
+/-- **Composed soundness — Gate 2 ceiling carries through.**
+
+    If `emitCertificate p c port` approves, then its `finalNotionalUsd`
+    is at most the Gate-2 reliability-adjusted ceiling computed from
+    the account constraints. This strengthens `certificate_soundness`
+    (which only says "no gate rejected") with a numeric bound: a
+    downstream Gate-3 resize can only shrink the Gate-2 output, never
+    widen it, so the Gate-2 ceiling dominates every Approve path
+    through the three-gate composition.
+
+    Proof chains four per-gate lemmas:
+      * `checkConstraints_approve_within_ceiling` /
+        `checkConstraints_resize_respects_ceiling` — Gate 2's output
+        respects the ceiling.
+      * `checkConstraints_approve_implies_proposal_nonneg` /
+        `checkConstraints_resize_nonneg` — Gate 2's output is ≥ 0 so
+        Gate 3's resize helper applies.
+      * `checkPortfolio_resize_at_most_nonneg_proposal` — any Gate-3
+        resize is at most its input proposal's notional (under non-
+        negativity). -/
+theorem certificate_approve_final_within_gate2_ceiling
+    (p : TradeProposal) (c : AccountConstraints) (port : Portfolio)
+    (h : (emitCertificate p c port).approves = true) :
+    (emitCertificate p c port).finalNotionalUsd
+      ≤ calculatePositionSize c.equity c.reliability c.sampleSize := by
+  rcases hv : verifySignal p with ⟨g1, assums⟩
+  cases hg1 : g1 with
+  | Reject codes =>
+    exfalso
+    simp [emitCertificate, hv, hg1, Certificate.approves, Verdict.isReject] at h
+  | Resize n =>
+    -- verifySignal never returns .Resize; same lifted argument as
+    -- in certificate_soundness.
+    exfalso
+    have hv1 : (verifySignal p).1 = .Resize n := by rw [hv]; exact hg1
+    unfold verifySignal at hv1
+    cases hsig : firingSignals (snapshotOf p) with
+    | nil => rw [hsig] at hv1; cases hv1
+    | cons s rest =>
+      rw [hsig] at hv1
+      by_cases hmc : mutuallyConsistent (s :: rest) = true
+      · simp only [hmc, if_true] at hv1
+        by_cases hdir : (s.direction == p.direction) = true
+        · simp only [hdir, if_true] at hv1
+          cases hlist : attachedAssumptions (snapshotOf p) p.direction with
+          | nil => rw [hlist] at hv1; cases hv1
+          | cons x xs => rw [hlist] at hv1; cases hv1
+        · simp only [hdir, if_false] at hv1; cases hv1
+      · have hmcf : mutuallyConsistent (s :: rest) = false := by
+          cases hval : mutuallyConsistent (s :: rest)
+          · rfl
+          · exact absurd hval hmc
+        simp only [hmcf, if_false] at hv1; cases hv1
+  | Approve =>
+    cases hg2 : checkConstraints p c with
+    | Reject codes =>
+      exfalso
+      simp [emitCertificate, hv, hg1, hg2, Certificate.approves, Verdict.isReject] at h
+    | Approve =>
+      have h_ceiling := checkConstraints_approve_within_ceiling p c hg2
+      have h_pnn := checkConstraints_approve_implies_proposal_nonneg p c hg2
+      -- p' inside emitCertificate equals `{p with notionalUsd := p.notionalUsd}`;
+      -- structurally the same as `p`, and in particular their `.notionalUsd` match.
+      cases hg3 : checkPortfolio { p with notionalUsd := p.notionalUsd } port c with
+      | Reject codes =>
+        exfalso
+        simp [emitCertificate, hv, hg1, hg2, hg3, Certificate.approves, Verdict.isReject] at h
+      | Approve =>
+        -- finalNotionalUsd = p.notionalUsd ≤ ceiling.
+        simp [emitCertificate, hv, hg1, hg2, hg3]
+        exact h_ceiling
+      | Resize m =>
+        -- finalNotionalUsd = m ≤ p.notionalUsd ≤ ceiling.
+        have h_m : m ≤ p.notionalUsd := by
+          have := checkPortfolio_resize_at_most_nonneg_proposal
+                    { p with notionalUsd := p.notionalUsd } port c m
+                    (by simpa using h_pnn) hg3
+          simpa using this
+        simp [emitCertificate, hv, hg1, hg2, hg3]
+        exact le_trans h_m h_ceiling
+    | Resize n =>
+      have h_ceiling := checkConstraints_resize_respects_ceiling p c n hg2
+      have h_n_nn := checkConstraints_resize_nonneg p c n hg2
+      cases hg3 : checkPortfolio { p with notionalUsd := n } port c with
+      | Reject codes =>
+        exfalso
+        simp [emitCertificate, hv, hg1, hg2, hg3, Certificate.approves, Verdict.isReject] at h
+      | Approve =>
+        simp [emitCertificate, hv, hg1, hg2, hg3]
+        exact h_ceiling
+      | Resize m =>
+        have h_m : m ≤ n := by
+          have := checkPortfolio_resize_at_most_nonneg_proposal
+                    { p with notionalUsd := n } port c m
+                    (by simpa using h_n_nn) hg3
+          simpa using this
+        simp [emitCertificate, hv, hg1, hg2, hg3]
+        exact le_trans h_m h_ceiling
 
 end Veritas.Gates

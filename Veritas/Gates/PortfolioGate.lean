@@ -20,6 +20,7 @@
 import Veritas.Gates.Types
 import Mathlib.Algebra.Order.Ring.Abs
 import Mathlib.Algebra.Order.Ring.Rat
+import Mathlib.Tactic.Linarith
 
 namespace Veritas.Gates
 
@@ -181,5 +182,58 @@ theorem checkPortfolio_approve_respects_var_bound
         rename_i hVarGuardFalse
         by_contra hgt
         exact hVarGuardFalse ⟨hpos, lt_of_not_ge hgt⟩
+
+/-- Gate 3 resize is bounded above by the **submitted proposal's**
+    notional whenever that notional is non-negative: the Resize branch
+    is only reached when `adjusted + |p.notionalUsd| > cap`, so
+    `cap - adjusted < |p.notionalUsd| = p.notionalUsd` (using the
+    non-negativity hypothesis). Needed by the certificate-level
+    composition theorem so Gate 3 can't silently widen what Gate 2
+    approved or resized to. -/
+theorem checkPortfolio_resize_at_most_nonneg_proposal
+    (p : TradeProposal) (port : Portfolio) (c : AccountConstraints)
+    (m : Rat)
+    (hp : 0 ≤ p.notionalUsd)
+    (h : checkPortfolio p port c = .Resize m) :
+    m ≤ p.notionalUsd := by
+  have h' :
+      (if hasDirectionConflict port.positions p then
+        Verdict.Reject ["direction_conflicts_existing_position"]
+       else if c.equity * port.maxGrossExposureFraction ≤ 0 then
+        Verdict.Reject ["gross_exposure_cap_non_positive"]
+       else if c.dailyVarLimit > 0 ∧ portfolioVarBound port p > c.dailyVarLimit then
+        Verdict.Reject ["portfolio_var_limit_exceeded"]
+       else if correlationAdjustedExposure port p + |p.notionalUsd|
+              ≤ c.equity * port.maxGrossExposureFraction then
+        Verdict.Approve
+       else if c.equity * port.maxGrossExposureFraction
+               - correlationAdjustedExposure port p ≤ 0 then
+        Verdict.Reject ["portfolio_already_at_correlation_weighted_cap"]
+       else
+        Verdict.Resize (c.equity * port.maxGrossExposureFraction
+                         - correlationAdjustedExposure port p))
+        = .Resize m := h
+  split at h'
+  · cases h'
+  · split at h'
+    · cases h'
+    · split at h'
+      · cases h'
+      · split at h'
+        · cases h'
+        · split at h'
+          · cases h'
+          · injection h' with hm
+            -- Rename the five anonymous hypotheses introduced by the
+            -- successive `split at h'` calls. Order matches introduction
+            -- order (oldest first).
+            rename_i _hdc _hcap _hvar htotal _hheadroom
+            -- htotal : ¬ (adjusted + |p.notionalUsd| ≤ cap)
+            have habs : |p.notionalUsd| = p.notionalUsd := abs_of_nonneg hp
+            rw [habs] at htotal
+            have hgt := lt_of_not_ge htotal
+            -- hgt : cap < adjusted + p.notionalUsd
+            rw [← hm]
+            linarith
 
 end Veritas.Gates
