@@ -55,9 +55,56 @@ curl -sX POST http://localhost:8000/verify/proposal \
   "gate2": {"verdict": "approve"},
   "gate3": {"verdict": "approve"},
   "approves": true,
-  "final_notional_usd": 1500.0
+  "final_notional_usd": 1500.0,
+  "attestation": {
+    "schema_version": 2,
+    "build_sha": "...", "public_key": "...", "signature": "...",
+    "request_digest": "..."
+  }
 }
 ```
+
+## Using Veritas as a caller
+
+Every returned certificate is signed. Your agent fetches Veritas's public key and build hash once (trust-on-first-use), then independently verifies every verdict against those pins without having to trust the operator.
+
+```python
+from python.sdk import (
+    TradeProposal, AccountConstraints, Portfolio,
+    Certificate, compute_request_digest,
+    verify_certificate, AttestationError,
+)
+
+# One-time: pin what your ops team approved.
+PINNED_PUBLIC_KEY = "..."       # GET /verify/pubkey → public_key
+PINNED_BUILD_SHA  = "..."       # GET /verify/pubkey → build_sha
+
+# Per-call: build request, submit, verify.
+proposal     = TradeProposal(direction="LONG", notional_usd=1500.0,
+                             funding_rate=0.0012, price=68000.0, timestamp=0)
+constraints  = AccountConstraints(equity=10000.0, reliability=0.8, sample_size=20)
+portfolio    = Portfolio()
+
+cert = Certificate.from_json(http_post("/verify/proposal", ...))
+
+digest = compute_request_digest(proposal, constraints, portfolio)
+try:
+    verify_certificate(
+        cert.body_json(), cert.attestation,
+        expected_public_key=PINNED_PUBLIC_KEY,
+        expected_request_digest=digest,   # replay protection
+    )
+except AttestationError as e:
+    raise SystemExit(f"Untrusted Veritas response: {e}")
+
+if cert.attestation.build_sha != PINNED_BUILD_SHA:
+    raise SystemExit("Veritas build drifted from the pinned kernel.")
+
+if cert.approves:
+    submit_order(cert.final_notional_usd)
+```
+
+The SDK surface (`python/sdk.py`) is deliberately `veritas-core`-free — no Lean binary, no subprocess, zero dependency on the verifier side. An agent that only talks to Veritas over HTTP or MCP does not need to install or run the Lean kernel locally.
 
 ## Docs
 
