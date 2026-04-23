@@ -250,4 +250,89 @@ theorem certificate_approve_final_within_gate2_ceiling
         simp [emitCertificate, hv, hg1, hg2, hg3]
         exact le_trans h_m h_ceiling
 
+
+/-- **Composed soundness — Gate 3 gross-exposure cap carries through.**
+
+    If `emitCertificate p c port` approves, then the portfolio's
+    correlation-adjusted exposure plus the absolute value of the
+    final approved notional stays within the cap. Exactly mirrors
+    `certificate_approve_final_within_gate2_ceiling` but for Gate 3's
+    correlation-weighted exposure bound. Together the two composed
+    theorems witness that every Approve path through the three-gate
+    composition respects BOTH the Gate-2 Kelly ceiling AND the Gate-3
+    cap simultaneously — the numeric half of what `certificate_soundness`
+    promises in words.
+
+    Proof chain:
+      * `checkPortfolio_approve_respects_cap` / `_resize_respects_cap` —
+        Gate 3's per-verdict cap guarantees.
+      * `correlationAdjustedExposure port p` only depends on `p.asset`
+        (not `.notionalUsd`), so substituting the proposal passed into
+        Gate 3 (with Gate-2-resized notional) is inert; `simpa`
+        normalizes the struct update. -/
+theorem certificate_approve_final_within_gate3_cap
+    (p : TradeProposal) (c : AccountConstraints) (port : Portfolio)
+    (h : (emitCertificate p c port).approves = true) :
+    correlationAdjustedExposure port p
+        + |(emitCertificate p c port).finalNotionalUsd|
+      ≤ c.equity * port.maxGrossExposureFraction := by
+  rcases hv : verifySignal p with ⟨g1, assums⟩
+  cases hg1 : g1 with
+  | Reject codes =>
+    exfalso
+    simp [emitCertificate, hv, hg1, Certificate.approves, Verdict.isReject] at h
+  | Resize n =>
+    -- verifySignal never returns .Resize; lifted argument.
+    exfalso
+    have hv1 : (verifySignal p).1 = .Resize n := by rw [hv]; exact hg1
+    unfold verifySignal at hv1
+    cases hsig : firingSignals (snapshotOf p) with
+    | nil => rw [hsig] at hv1; cases hv1
+    | cons s rest =>
+      rw [hsig] at hv1
+      by_cases hmc : mutuallyConsistent (s :: rest) = true
+      · simp only [hmc, if_true] at hv1
+        by_cases hdir : (s.direction == p.direction) = true
+        · simp only [hdir, if_true] at hv1
+          cases hlist : attachedAssumptions (snapshotOf p) p.direction with
+          | nil => rw [hlist] at hv1; cases hv1
+          | cons x xs => rw [hlist] at hv1; cases hv1
+        · simp only [hdir, if_false] at hv1; cases hv1
+      · have hmcf : mutuallyConsistent (s :: rest) = false := by
+          cases hval : mutuallyConsistent (s :: rest)
+          · rfl
+          · exact absurd hval hmc
+        simp only [hmcf, if_false] at hv1; cases hv1
+  | Approve =>
+    cases hg2 : checkConstraints p c with
+    | Reject codes =>
+      exfalso
+      simp [emitCertificate, hv, hg1, hg2, Certificate.approves, Verdict.isReject] at h
+    | Approve =>
+      cases hg3 : checkPortfolio { p with notionalUsd := p.notionalUsd } port c with
+      | Reject codes =>
+        exfalso
+        simp [emitCertificate, hv, hg1, hg2, hg3, Certificate.approves, Verdict.isReject] at h
+      | Approve =>
+        have hcap := checkPortfolio_approve_respects_cap _ port c hg3
+        simp [emitCertificate, hv, hg1, hg2, hg3]
+        simpa using hcap
+      | Resize m =>
+        have hcap := checkPortfolio_resize_respects_cap _ port c m hg3
+        simp [emitCertificate, hv, hg1, hg2, hg3]
+        simpa using hcap
+    | Resize n =>
+      cases hg3 : checkPortfolio { p with notionalUsd := n } port c with
+      | Reject codes =>
+        exfalso
+        simp [emitCertificate, hv, hg1, hg2, hg3, Certificate.approves, Verdict.isReject] at h
+      | Approve =>
+        have hcap := checkPortfolio_approve_respects_cap _ port c hg3
+        simp [emitCertificate, hv, hg1, hg2, hg3]
+        simpa using hcap
+      | Resize m =>
+        have hcap := checkPortfolio_resize_respects_cap _ port c m hg3
+        simp [emitCertificate, hv, hg1, hg2, hg3]
+        simpa using hcap
+
 end Veritas.Gates

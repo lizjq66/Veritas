@@ -183,6 +183,60 @@ theorem checkPortfolio_approve_respects_var_bound
         by_contra hgt
         exact hVarGuardFalse ⟨hpos, lt_of_not_ge hgt⟩
 
+/-- Gate 3 resize soundness (cap): the correlation-adjusted exposure
+    plus the absolute value of the resize's notional also stays within
+    the cap. In the Resize branch the resize value equals
+    `cap - adjusted` and the branch's precondition guarantees
+    `cap - adjusted > 0`, so its absolute value equals itself and
+    `adjusted + (cap - adjusted) = cap`. Twin of
+    `checkPortfolio_approve_respects_cap`; feeds the composed
+    certificate-level Gate 3 cap theorem. -/
+theorem checkPortfolio_resize_respects_cap
+    (p : TradeProposal) (port : Portfolio) (c : AccountConstraints)
+    (m : Rat)
+    (h : checkPortfolio p port c = .Resize m) :
+    correlationAdjustedExposure port p + |m|
+      ≤ c.equity * port.maxGrossExposureFraction := by
+  have h' :
+      (if hasDirectionConflict port.positions p then
+        Verdict.Reject ["direction_conflicts_existing_position"]
+       else if c.equity * port.maxGrossExposureFraction ≤ 0 then
+        Verdict.Reject ["gross_exposure_cap_non_positive"]
+       else if c.dailyVarLimit > 0 ∧ portfolioVarBound port p > c.dailyVarLimit then
+        Verdict.Reject ["portfolio_var_limit_exceeded"]
+       else if correlationAdjustedExposure port p + |p.notionalUsd|
+              ≤ c.equity * port.maxGrossExposureFraction then
+        Verdict.Approve
+       else if c.equity * port.maxGrossExposureFraction
+               - correlationAdjustedExposure port p ≤ 0 then
+        Verdict.Reject ["portfolio_already_at_correlation_weighted_cap"]
+       else
+        Verdict.Resize (c.equity * port.maxGrossExposureFraction
+                         - correlationAdjustedExposure port p))
+        = .Resize m := h
+  split at h'
+  · cases h'
+  · split at h'
+    · cases h'
+    · split at h'
+      · cases h'
+      · split at h'
+        · cases h'
+        · split at h'
+          · cases h'
+          · injection h' with hm
+            -- hm : cap - adjusted = m
+            -- Position 5 (oldest-first) is the Resize branch's
+            -- `¬ (cap - adjusted ≤ 0)` guard.
+            rename_i _hdc _hcap _hvar _htotal hheadroom
+            have hpos : 0 < c.equity * port.maxGrossExposureFraction
+                          - correlationAdjustedExposure port p :=
+              lt_of_not_ge hheadroom
+            have hmpos : 0 < m := by rw [← hm]; exact hpos
+            have habs : |m| = m := abs_of_pos hmpos
+            rw [habs, ← hm]
+            linarith
+
 /-- Gate 3 resize is bounded above by the **submitted proposal's**
     notional whenever that notional is non-negative: the Resize branch
     is only reached when `adjusted + |p.notionalUsd| > cap`, so

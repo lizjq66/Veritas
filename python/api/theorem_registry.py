@@ -261,6 +261,19 @@ THEOREMS: dict[str, dict] = {
             "received from Gate 2.",
         "axioms_used": [],
     },
+    "checkPortfolio_resize_respects_cap": {
+        "gate": 3,
+        "file": "Veritas/Gates/PortfolioGate.lean",
+        "status": "proven",
+        "statement_natural_language":
+            "If Gate 3 resizes a proposal to m, then the correlation-"
+            "adjusted exposure plus |m| stays within the cap. In the "
+            "Resize branch m equals cap minus adjusted exposure and the "
+            "branch's guard ensures that difference is positive, so "
+            "|m| = m and adjusted + m exactly equals cap. Twin of "
+            "checkPortfolio_approve_respects_cap for the Resize path.",
+        "axioms_used": [],
+    },
     "certificate_soundness": {
         "gate": "combined",
         "file": "Veritas/Gates/Certificate.lean",
@@ -284,6 +297,20 @@ THEOREMS: dict[str, dict] = {
             "downstream resize can only shrink Gate 2's output, never "
             "widen it, so the Gate-2 ceiling dominates every Approve path "
             "through the three-gate composition.",
+        "axioms_used": [],
+    },
+    "certificate_approve_final_within_gate3_cap": {
+        "gate": "combined",
+        "file": "Veritas/Gates/Certificate.lean",
+        "status": "proven",
+        "statement_natural_language":
+            "If an emitted certificate approves, the portfolio's "
+            "correlation-adjusted exposure plus the absolute value of "
+            "finalNotionalUsd stays within the cap. Twin of "
+            "certificate_approve_final_within_gate2_ceiling for Gate 3's "
+            "correlation-weighted exposure bound: every Approve path "
+            "respects BOTH the Gate-2 Kelly ceiling AND the Gate-3 cap "
+            "simultaneously.",
         "axioms_used": [],
     },
 }
