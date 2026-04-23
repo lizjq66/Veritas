@@ -78,13 +78,15 @@ class VeritasCore:
     def check_constraints(
         self, proposal: "TradeProposal", constraints: "AccountConstraints"
     ) -> dict:
-        """Gate 2: strategy-constraint compatibility."""
+        """Gate 2: strategy-constraint compatibility (v0.4 — Bayesian)."""
         return self._call("check-constraints", [
             proposal.direction,
             str(proposal.notional_usd),
             str(constraints.equity),
-            str(constraints.reliability),
-            str(constraints.sample_size),
+            str(constraints.successes),
+            str(constraints.failures),
+            str(constraints.prior_alpha),
+            str(constraints.prior_beta),
             str(constraints.max_leverage),
             str(constraints.max_position_fraction),
             str(constraints.stop_loss_pct),
@@ -138,8 +140,10 @@ class VeritasCore:
             str(proposal.spot_price),
             str(constraints.equity),
             str(constraints.daily_var_limit),
-            str(constraints.reliability),
-            str(constraints.sample_size),
+            str(constraints.successes),
+            str(constraints.failures),
+            str(constraints.prior_alpha),
+            str(constraints.prior_beta),
             str(constraints.max_leverage),
             str(constraints.max_position_fraction),
             str(constraints.stop_loss_pct),
@@ -210,9 +214,19 @@ class VeritasCore:
         ])
         return result if result else []
 
-    def size(self, equity: float, reliability: float, sample_size: int) -> dict:
-        """Reliability-adjusted position size (the Gate 2 ceiling)."""
-        return self._call("size", [str(equity), str(reliability), str(sample_size)])
+    def size(self, equity: float, successes: int, failures: int,
+             prior_alpha: float = 1.0, prior_beta: float = 1.0) -> dict:
+        """Bayesian-posterior position size (the Gate 2 ceiling).
+
+        v0.4: takes observed ``(successes, failures)`` plus Beta prior
+        parameters instead of the retired ``(reliability, sample_size)``
+        pair. Default ``Beta(1, 1)`` matches the old frequentist
+        behavior at large samples; adds Laplace smoothing at small
+        samples."""
+        return self._call("size", [
+            str(equity), str(successes), str(failures),
+            str(prior_alpha), str(prior_beta),
+        ])
 
     def monitor(self, snapshot: dict, position: dict) -> dict:
         """Classify an open position's exit state."""

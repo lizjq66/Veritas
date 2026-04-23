@@ -192,13 +192,15 @@ def run_loop(
                     _log(f"check   \u2192 reliability {reliability:.0%} "
                          f"({stats['wins']}/{stats['total']})")
 
-                    # Step 5: size (Lean decides)
+                    # Step 5: size (Lean decides, v0.4 Bayesian posterior)
                     equity = executor.equity()
-                    sizing = core.size(equity, reliability, stats["total"])
+                    successes = stats["wins"]
+                    failures = stats["total"] - stats["wins"]
+                    sizing = core.size(equity, successes, failures)
                     pos_size = sizing["position_size"]
 
                     _emit("size", position_size=pos_size, equity=equity,
-                          reliability=reliability, sample_size=stats["total"])
+                          successes=successes, failures=failures)
 
                     if pos_size <= 0:
                         _log("size    \u2192 0 (no edge, skipping)")

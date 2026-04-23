@@ -79,16 +79,39 @@ TOOLS = [
                     ),
                 },
                 "equity": {"type": "number", "description": "Caller's account equity in USD"},
-                "reliability": {
-                    "type": "number",
-                    "description": "Empirical reliability of the assumption backing the trade (0.0–1.0). "
-                                   "If omitted, defaults to 0.5.",
-                },
-                "sample_size": {
+                "successes": {
                     "type": "integer",
-                    "description": "Number of historical samples behind the reliability score. "
-                                   "Under 10 enters exploration phase (fixed 1% sizing).",
                     "default": 0,
+                    "description": (
+                        "Observed wins on the proposal's assumption. "
+                        "Gate 2 combines this with `failures` into a "
+                        "Beta posterior for reliability-aware sizing."
+                    ),
+                },
+                "failures": {
+                    "type": "integer",
+                    "default": 0,
+                    "description": (
+                        "Observed losses on the proposal's assumption. "
+                        "Under 10 total observations (successes + failures) "
+                        "enters exploration phase (fixed 1% sizing)."
+                    ),
+                },
+                "prior_alpha": {
+                    "type": "number",
+                    "default": 1.0,
+                    "description": (
+                        "Beta prior α on reliability. Default 1 (uniform "
+                        "Laplace prior)."
+                    ),
+                },
+                "prior_beta": {
+                    "type": "number",
+                    "default": 1.0,
+                    "description": (
+                        "Beta prior β on reliability. Default 1 (uniform "
+                        "Laplace prior)."
+                    ),
                 },
                 "max_leverage": {"type": "number", "default": 1.0},
                 "stop_loss_pct": {"type": "number", "default": 5.0},
@@ -225,8 +248,10 @@ def _handle_verify_proposal(args: dict) -> dict:
     )
     constraints = AccountConstraints(
         equity=float(args["equity"]),
-        reliability=float(args.get("reliability", 0.5)),
-        sample_size=int(args.get("sample_size", 0)),
+        successes=int(args.get("successes", 0)),
+        failures=int(args.get("failures", 0)),
+        prior_alpha=float(args.get("prior_alpha", 1.0)),
+        prior_beta=float(args.get("prior_beta", 1.0)),
         max_leverage=float(args.get("max_leverage", 1.0)),
         stop_loss_pct=float(args.get("stop_loss_pct", 5.0)),
         daily_var_limit=float(args.get("daily_var_limit", 0.0)),

@@ -39,20 +39,6 @@ private def strToRat! (s : String) : Rat :=
 /-- For JSON output. -/
 private def ratToFloat (r : Rat) : Float := Learning.ratToFloat r
 
-/-- v0.4 migration shim: translate a legacy `(reliability, sampleSize)`
-    pair — what the Python bridge still sends — into the
-    `(successes, failures)` pair Gate 2's Bayesian sizer now expects.
-    Uniform `Beta(1, 1)` prior. Floor semantics on `reliability ×
-    sampleSize`; saturates at 0 on negative reliability.
-
-    To be removed in slice 5 once the Python bridge sends
-    `(successes, failures, priorAlpha, priorBeta)` directly. -/
-private def legacyRelToBeta (rel : Rat) (sample : Nat) : Nat × Nat :=
-  let prod : Rat := rel * (sample : Rat)
-  let successes : Nat := prod.num.toNat / prod.den
-  let failures : Nat := sample - successes
-  (successes, failures)
-
 -- ── JSON output helpers ───────────────────────────────────────────
 
 private def jsonStr (k v : String) : String := s!"\"{k}\": \"{v}\""
@@ -149,22 +135,18 @@ private def handleExtract (args : List String) : IO UInt32 := do
 
 private def handleSize (args : List String) : IO UInt32 := do
   match args with
-  | [equityS, relS, sampleS] =>
+  | [equityS, succS, failS, priorAS, priorBS] =>
     let eq := strToRat! equityS
-    let rel := strToRat! relS
-    let sample := sampleS.toNat!
-    -- v0.4 shim: translate legacy (rel, sample) to a Beta(1,1)-prior
-    -- posterior; retire when bridge sends raw (successes, failures).
-    let (succ, fail) := legacyRelToBeta rel sample
     let posterior : Learning.BetaPosterior :=
-      { successes := succ, failures := fail, priorAlpha := 1, priorBeta := 1 }
+      { successes := succS.toNat!, failures := failS.toNat!,
+        priorAlpha := strToRat! priorAS, priorBeta := strToRat! priorBS }
     let size := Finance.calculatePositionSizeFromPosterior eq posterior
     IO.println (jsonObj [jsonNum "position_size" size,
                          jsonNum "equity" eq,
-                         jsonNum "reliability" rel])
+                         jsonNum "posterior_mean" posterior.posteriorMean])
     return 0
   | _ =>
-    IO.eprintln "usage: veritas-core size <equity> <reliability> <sample_size>"
+    IO.eprintln "usage: veritas-core size <equity> <successes> <failures> <prior_alpha> <prior_beta>"
     return 1
 
 private def handleMonitor (args : List String) : IO UInt32 := do
@@ -331,16 +313,17 @@ private def handleVerifySignal (args : List String) : IO UInt32 := do
 
 private def handleCheckConstraints (args : List String) : IO UInt32 := do
   match args with
-  | [dirS, notionalS, equityS, relS, sampleS, maxLevS, maxFracS, stopPctS] =>
+  | [dirS, notionalS, equityS, succS, failS, priorAS, priorBS,
+     maxLevS, maxFracS, stopPctS] =>
     match Direction.fromString? dirS with
     | none => IO.eprintln s!"unknown direction: {dirS}"; return 1
     | some dir =>
       let proposal : Gates.TradeProposal :=
         ⟨dir, strToRat! notionalS, 0, 0, 0, 0, 0, 0, "", 0⟩
-      let (succ, fail) := legacyRelToBeta (strToRat! relS) sampleS.toNat!
       let constraints : Gates.AccountConstraints :=
         ⟨strToRat! equityS, strToRat! maxFracS, strToRat! maxLevS,
-         strToRat! stopPctS, succ, fail, 1, 1, 0⟩
+         strToRat! stopPctS, succS.toNat!, failS.toNat!,
+         strToRat! priorAS, strToRat! priorBS, 0⟩
       let verdict := Gates.checkConstraints proposal constraints
       IO.println (jsonObj [
         jsonStr "gate" "2",
@@ -348,7 +331,7 @@ private def handleCheckConstraints (args : List String) : IO UInt32 := do
         s!"\"result\": {jsonVerdict verdict}"])
       return 0
   | _ =>
-    IO.eprintln "usage: veritas-core check-constraints <dir> <notional> <equity> <reliability> <sample_size> <max_leverage> <max_pos_frac> <stop_pct>"
+    IO.eprintln "usage: veritas-core check-constraints <dir> <notional> <equity> <successes> <failures> <prior_alpha> <prior_beta> <max_leverage> <max_pos_frac> <stop_pct>"
     return 1
 
 private partial def parseCorrelationTriples
@@ -449,14 +432,16 @@ private def handleCheckPortfolioEx (args : List String) : IO UInt32 := do
 private def handleEmitCertificateEx (args : List String) : IO UInt32 := do
   let usage :=
     "usage: veritas-core emit-certificate-ex <dir> <notional> <fr> " ++
-    "<price> <ts> <oi> <spot> <equity> <daily_var_limit> <rel> <sample> " ++
+    "<price> <ts> <oi> <spot> <equity> <daily_var_limit> " ++
+    "<successes> <failures> <prior_alpha> <prior_beta> " ++
     "<max_lev> <max_pos_frac> <stop_pct> <max_gross_frac> <prop_asset> " ++
     "<prop_vol> (none | one <ed> <ep> <sz> <asset> <vol>) " ++
     "<n_corr> [<a> <b> <c>]*"
   let buildAndEmit := fun (port : Gates.Portfolio)
                           (dirStr : String) (notionalStr frStr priceStr : String)
                           (tsStr oiStr spotStr : String)
-                          (equityStr varLimStr relStr sampleStr : String)
+                          (equityStr varLimStr succStr failStr : String)
+                          (priorAStr priorBStr : String)
                           (maxLevStr maxFracStr stopPctStr : String)
                           (propAsset propVolStr : String) => do
     match Direction.fromString? dirStr with
@@ -466,10 +451,10 @@ private def handleEmitCertificateEx (args : List String) : IO UInt32 := do
         ⟨dir, strToRat! notionalStr, strToRat! frStr, strToRat! priceStr,
          tsStr.toNat!, strToRat! oiStr, strToRat! spotStr, 0, propAsset,
          strToRat! propVolStr⟩
-      let (succ, fail) := legacyRelToBeta (strToRat! relStr) sampleStr.toNat!
       let constraints : Gates.AccountConstraints :=
         ⟨strToRat! equityStr, strToRat! maxFracStr, strToRat! maxLevStr,
-         strToRat! stopPctStr, succ, fail, 1, 1, strToRat! varLimStr⟩
+         strToRat! stopPctStr, succStr.toNat!, failStr.toNat!,
+         strToRat! priorAStr, strToRat! priorBStr, strToRat! varLimStr⟩
       let cert := Gates.emitCertificate proposal constraints port
       IO.println (jsonObj [
         s!"\"gate1\": {jsonVerdict cert.gate1}",
@@ -481,16 +466,18 @@ private def handleEmitCertificateEx (args : List String) : IO UInt32 := do
       return 0
   match args with
   | d :: n :: fr :: pr :: ts :: oi :: sp
-      :: eq :: varLim :: rel :: sam :: lev :: pfrac :: stop
+      :: eq :: varLim :: succ :: fail :: priorA :: priorB
+      :: lev :: pfrac :: stop
       :: gfrac :: propAsset :: propVol :: "none" :: _nCorrS :: corrArgs =>
     match parseCorrelationTriples corrArgs with
     | some corrs =>
       let port : Gates.Portfolio := ⟨[], strToRat! gfrac, corrs⟩
-      buildAndEmit port d n fr pr ts oi sp eq varLim rel sam lev pfrac stop
-                   propAsset propVol
+      buildAndEmit port d n fr pr ts oi sp eq varLim succ fail priorA priorB
+                   lev pfrac stop propAsset propVol
     | none => IO.eprintln usage; return 1
   | d :: n :: fr :: pr :: ts :: oi :: sp
-      :: eq :: varLim :: rel :: sam :: lev :: pfrac :: stop
+      :: eq :: varLim :: succ :: fail :: priorA :: priorB
+      :: lev :: pfrac :: stop
       :: gfrac :: propAsset :: propVol
       :: "one" :: exDirS :: exEpS :: exSzS :: exAssetS :: exVolS
       :: _nCorrS :: corrArgs =>
@@ -500,67 +487,21 @@ private def handleEmitCertificateEx (args : List String) : IO UInt32 := do
         ⟨exDir, strToRat! exEpS, strToRat! exSzS, 1, 5, 0, "", exAssetS,
          strToRat! exVolS⟩
       let port : Gates.Portfolio := ⟨[pos], strToRat! gfrac, corrs⟩
-      buildAndEmit port d n fr pr ts oi sp eq varLim rel sam lev pfrac stop
-                   propAsset propVol
+      buildAndEmit port d n fr pr ts oi sp eq varLim succ fail priorA priorB
+                   lev pfrac stop propAsset propVol
     | _, _ => IO.eprintln usage; return 1
   | _ => IO.eprintln usage; return 1
 
-private def handleEmitCertificate (args : List String) : IO UInt32 := do
-  let parse := fun (port : Gates.Portfolio)
-                   (dirStr : String) (notionalStr frStr priceStr : String)
-                   (tsStr oiStr spotStr : String)
-                   (equityStr relStr sampleStr : String)
-                   (maxLevStr maxFracStr stopPctStr : String) => do
-    match Direction.fromString? dirStr with
-    | none => IO.eprintln s!"unknown direction: {dirStr}"; return (1 : UInt32)
-    | some dir =>
-      let proposal : Gates.TradeProposal :=
-        ⟨dir, strToRat! notionalStr, strToRat! frStr, strToRat! priceStr,
-         tsStr.toNat!, strToRat! oiStr, strToRat! spotStr, 0, "", 0⟩
-      let (succ, fail) := legacyRelToBeta (strToRat! relStr) sampleStr.toNat!
-      let constraints : Gates.AccountConstraints :=
-        ⟨strToRat! equityStr, strToRat! maxFracStr, strToRat! maxLevStr,
-         strToRat! stopPctStr, succ, fail, 1, 1, 0⟩
-      let cert := Gates.emitCertificate proposal constraints port
-      IO.println (jsonObj [
-        s!"\"gate1\": {jsonVerdict cert.gate1}",
-        s!"\"gate2\": {jsonVerdict cert.gate2}",
-        s!"\"gate3\": {jsonVerdict cert.gate3}",
-        s!"\"assumptions\": {jsonAssumptions cert.assumptions}",
-        jsonNum "final_notional_usd" cert.finalNotionalUsd,
-        jsonStr "approves" (if cert.approves then "true" else "false")])
-      return 0
-  match args with
-  | [d, n, fr, pr, ts, oi, sp, eq, rel, sam, lev, pfrac, stop, gfrac, "none"] =>
-    parse ⟨[], strToRat! gfrac, []⟩ d n fr pr ts oi sp eq rel sam lev pfrac stop
-  | [d, n, fr, pr, ts, oi, sp, eq, rel, sam, lev, pfrac, stop, gfrac,
-     "one", exDirS, exEpS, exSzS] =>
-    match Direction.fromString? exDirS with
-    | none => IO.eprintln s!"unknown existing direction: {exDirS}"; return 1
-    | some exDir =>
-      let pos : Position :=
-        ⟨exDir, strToRat! exEpS, strToRat! exSzS, 1, 5, 0, "", "", 0⟩
-      let port : Gates.Portfolio := ⟨[pos], strToRat! gfrac, []⟩
-      parse port d n fr pr ts oi sp eq rel sam lev pfrac stop
-  | [d, n, fr, pr, ts, oi, eq, rel, sam, lev, pfrac, stop, gfrac, "none"] =>
-    parse ⟨[], strToRat! gfrac, []⟩ d n fr pr ts oi "0" eq rel sam lev pfrac stop
-  | [d, n, fr, pr, ts, oi, eq, rel, sam, lev, pfrac, stop, gfrac,
-     "one", exDirS, exEpS, exSzS] =>
-    match Direction.fromString? exDirS with
-    | none => IO.eprintln s!"unknown existing direction: {exDirS}"; return 1
-    | some exDir =>
-      let pos : Position :=
-        ⟨exDir, strToRat! exEpS, strToRat! exSzS, 1, 5, 0, "", "", 0⟩
-      let port : Gates.Portfolio := ⟨[pos], strToRat! gfrac, []⟩
-      parse port d n fr pr ts oi "0" eq rel sam lev pfrac stop
-  | _ =>
-    IO.eprintln "usage: veritas-core emit-certificate <dir> <notional> <fr> <price> <ts> <oi> <spot> <equity> <reliability> <sample> <max_lev> <max_pos_frac> <stop_pct> <max_gross_frac> (none | one <exist_dir> <exist_ep> <exist_sz>)"
-    return 1
+-- `handleEmitCertificate` (the non-ex variant taking legacy
+-- `<rel> <sample>` args) was removed in v0.4 Slice 5. Bridge.py only
+-- ever invoked `emit-certificate-ex`; the non-ex handler was dead
+-- code. Callers that need the combined certificate use
+-- `emit-certificate-ex` with correlation-aware inputs.
 
 -- ── Entry point ───────────────────────────────────────────────────
 
 private def commandList : String :=
-  "gate commands:    verify-signal, check-constraints, check-portfolio, classify-exit, emit-certificate\n" ++
+  "gate commands:    verify-signal, check-constraints, check-portfolio, classify-exit, emit-certificate-ex\n" ++
   "primitive commands: decide, extract, size, monitor, update-reliability,\n" ++
   "                   aggregate-reliability, classify-regime, build-context,\n" ++
   "                   judge-signal, execution-quality, version"
@@ -574,7 +515,6 @@ def main (args : List String) : IO UInt32 := do
     | "check-portfolio"     => handleCheckPortfolio rest
     | "check-portfolio-ex"  => handleCheckPortfolioEx rest
     | "classify-exit"       => handleClassifyExit rest
-    | "emit-certificate"    => handleEmitCertificate rest
     | "emit-certificate-ex" => handleEmitCertificateEx rest
     | "decide"              => handleDecide rest
     | "extract"             => handleExtract rest

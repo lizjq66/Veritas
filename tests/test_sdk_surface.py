@@ -78,7 +78,7 @@ def test_sdk_end_to_end_verify_round_trip():
         funding_rate=0.0012, price=68000.0, timestamp=0,
     )
     constraints = sdk.AccountConstraints(
-        equity=10000.0, reliability=0.8, sample_size=20,
+        equity=10000.0, successes=16, failures=4,
     )
     portfolio = sdk.Portfolio()
 
@@ -132,7 +132,7 @@ def test_sdk_verify_rejects_mismatched_request_digest():
     )
     digest_a = sdk.compute_request_digest(
         proposal_a, sdk.AccountConstraints(
-            equity=10000.0, reliability=0.8, sample_size=20),
+            equity=10000.0, successes=16, failures=4),
         sdk.Portfolio(),
     )
     att = sign_certificate_body(
@@ -147,7 +147,7 @@ def test_sdk_verify_rejects_mismatched_request_digest():
     )
     digest_b = sdk.compute_request_digest(
         proposal_b, sdk.AccountConstraints(
-            equity=10000.0, reliability=0.8, sample_size=20),
+            equity=10000.0, successes=16, failures=4),
         sdk.Portfolio(),
     )
     with pytest.raises(sdk.AttestationError, match="does not match expected"):
@@ -170,7 +170,7 @@ def test_sdk_verify_rejects_tampered_verdict():
         funding_rate=0.0012, price=68000.0, timestamp=0,
     )
     constraints = sdk.AccountConstraints(
-        equity=10000.0, reliability=0.8, sample_size=20,
+        equity=10000.0, successes=16, failures=4,
     )
     portfolio = sdk.Portfolio()
     digest = sdk.compute_request_digest(proposal, constraints, portfolio)

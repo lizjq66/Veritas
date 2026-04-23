@@ -290,7 +290,7 @@ def _proposal() -> TradeProposal:
 
 def _constraints() -> AccountConstraints:
     return AccountConstraints(
-        equity=10000.0, reliability=0.8, sample_size=20,
+        equity=10000.0, successes=16, failures=4,
         max_leverage=1.0, max_position_fraction=0.25, stop_loss_pct=5.0,
     )
 

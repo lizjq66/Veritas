@@ -52,11 +52,13 @@ def _long_on_neutral_funding(notional: float = 1500.0) -> TradeProposal:
     )
 
 
-def _good_constraints(reliability: float = 0.8,
-                      sample_size: int = 20,
+def _good_constraints(successes: int = 16,
+                      failures: int = 4,
                       equity: float = 10000.0) -> AccountConstraints:
+    # Defaults correspond to the retired (reliability=0.8, sample_size=20)
+    # fixture: 16 successes + 4 failures, uniform Beta(1, 1) prior.
     return AccountConstraints(
-        equity=equity, reliability=reliability, sample_size=sample_size,
+        equity=equity, successes=successes, failures=failures,
         max_leverage=1.0, max_position_fraction=0.25, stop_loss_pct=5.0,
     )
 
@@ -223,7 +225,7 @@ def test_gate2_approves_within_ceiling(verifier):
 def test_gate2_resizes_when_above_ceiling(verifier):
     # 90% reliability → Kelly ≈ 0.5*0.8 = 0.4; half-Kelly capped at 25% of 10k = 2500
     proposal = _long_on_positive_funding(notional=9000.0)
-    verdict = verifier.check_constraints(proposal, _good_constraints(reliability=0.9, sample_size=30))
+    verdict = verifier.check_constraints(proposal, _good_constraints(successes=27, failures=3))
     assert verdict.tag == "resize"
     assert verdict.new_notional_usd is not None
     assert verdict.new_notional_usd == pytest.approx(2500.0, rel=1e-3)
@@ -233,7 +235,7 @@ def test_gate2_rejects_when_no_edge(verifier):
     proposal = _long_on_positive_funding(notional=1000.0)
     # reliability <= 0.5 post-exploration → zero ceiling → reject
     verdict = verifier.check_constraints(
-        proposal, _good_constraints(reliability=0.5, sample_size=30)
+        proposal, _good_constraints(successes=15, failures=15)
     )
     assert verdict.tag == "reject"
     assert "no_edge_reliability_below_threshold" in verdict.reason_codes
@@ -242,7 +244,7 @@ def test_gate2_rejects_when_no_edge(verifier):
 def test_gate2_rejects_non_positive_leverage(verifier):
     proposal = _long_on_positive_funding(notional=1000.0)
     constraints = AccountConstraints(
-        equity=10000.0, reliability=0.8, sample_size=20,
+        equity=10000.0, successes=16, failures=4,
         max_leverage=0.0, max_position_fraction=0.25, stop_loss_pct=5.0,
     )
     verdict = verifier.check_constraints(proposal, constraints)
@@ -524,7 +526,7 @@ def test_certificate_resize_flows_to_gate3(verifier):
     # Gate 2 resizes to 2500; Gate 3 sees 2500 in an empty portfolio → approve.
     cert = verifier.verify(
         _long_on_positive_funding(notional=9000.0),
-        _good_constraints(reliability=0.9, sample_size=30),
+        _good_constraints(successes=27, failures=3),
     )
     assert cert.approves is True
     assert cert.gate2.tag == "resize"

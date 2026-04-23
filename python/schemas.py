@@ -59,12 +59,21 @@ class TradeProposal:
 
 @dataclass(frozen=True)
 class AccountConstraints:
-    """Account-level policy envelope. Reliability is the empirical score
-    for the assumption the caller attributes to this proposal."""
+    """Account-level policy envelope.
+
+    v0.4: reliability is expressed as a Beta posterior. Caller supplies
+    raw `successes` / `failures` counts on the proposal's assumption,
+    plus Beta prior parameters (defaults: uniform `Beta(1, 1)` /
+    Laplace smoothing). Gate 2 derives the posterior mean internally.
+    Cold start (`successes = failures = 0`) reads as posterior mean
+    1/2 and stays in the exploration phase — byte-identical behavior
+    to the retired v0.3 frequentist input."""
 
     equity: float
-    reliability: float
-    sample_size: int
+    successes: int = 0
+    failures: int = 0
+    prior_alpha: float = 1.0
+    prior_beta: float = 1.0
     max_leverage: float = 1.0
     max_position_fraction: float = 0.25
     stop_loss_pct: float = 5.0

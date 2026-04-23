@@ -10,10 +10,11 @@ axiom.
 
 from __future__ import annotations
 
+import warnings
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from python.api.theorem_registry import THEOREMS
 from python.schemas import (
@@ -23,6 +24,28 @@ from python.schemas import (
     TradeProposal,
 )
 from python.verifier import Verifier
+
+
+# Flipped once per process the first time a caller submits the legacy
+# `reliability` / `sample_size` fields. Scheduled for removal in v0.5;
+# see CHANGELOG.md.
+_LEGACY_RELIABILITY_WARNED = False
+
+
+def _warn_legacy_reliability_once() -> None:
+    global _LEGACY_RELIABILITY_WARNED
+    if _LEGACY_RELIABILITY_WARNED:
+        return
+    _LEGACY_RELIABILITY_WARNED = True
+    warnings.warn(
+        "Veritas API: `reliability` / `sample_size` fields on "
+        "/verify/proposal (and siblings) are deprecated as of v0.4. "
+        "They are translated into the Bayesian "
+        "`(successes, failures, prior_alpha, prior_beta)` tuple with a "
+        "default Beta(1, 1) prior. Removal is scheduled for v0.5; "
+        "migrate callers now. See CHANGELOG.md.",
+        DeprecationWarning, stacklevel=3,
+    )
 
 router = APIRouter()
 
@@ -52,13 +75,52 @@ class ProposalIn(BaseModel):
 
 
 class ConstraintsIn(BaseModel):
+    """HTTP wire shape for `AccountConstraints`.
+
+    The canonical reliability input is Bayesian
+    `(successes, failures, prior_alpha, prior_beta)`. The legacy
+    v0.3 `reliability` / `sample_size` pair is still accepted
+    (deprecated; scheduled for removal in v0.5 — see CHANGELOG.md),
+    translated at validation time into the Bayesian fields via a
+    Beta(1, 1) prior."""
+
     equity: float = Field(gt=0)
-    reliability: float = Field(ge=0, le=1)
-    sample_size: int = Field(ge=0)
+    # v0.4 canonical fields
+    successes: int = Field(default=0, ge=0)
+    failures: int = Field(default=0, ge=0)
+    prior_alpha: float = Field(default=1.0, ge=0)
+    prior_beta: float = Field(default=1.0, ge=0)
     max_leverage: float = 1.0
     max_position_fraction: float = 0.25
     stop_loss_pct: float = 5.0
     daily_var_limit: float = Field(default=0.0, ge=0)
+    # v0.3 legacy fields (deprecated; translated below)
+    reliability: float | None = Field(default=None, ge=0, le=1)
+    sample_size: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def _translate_legacy_reliability(self) -> "ConstraintsIn":
+        """When caller supplies legacy `(reliability, sample_size)`
+        and has not independently set the Bayesian fields, derive
+        `(successes, failures)` under a uniform prior and emit a
+        one-shot deprecation warning."""
+        caller_sent_legacy = (
+            self.reliability is not None or self.sample_size is not None
+        )
+        caller_sent_bayesian = (
+            self.successes > 0 or self.failures > 0
+            or self.prior_alpha != 1.0 or self.prior_beta != 1.0
+        )
+        if caller_sent_legacy and not caller_sent_bayesian:
+            _warn_legacy_reliability_once()
+            rel = self.reliability if self.reliability is not None else 0.5
+            total = self.sample_size if self.sample_size is not None else 0
+            succ = round(rel * total)
+            fail = total - succ
+            object.__setattr__(self, "successes", succ)
+            object.__setattr__(self, "failures", fail)
+            # priors stay at Beta(1, 1) default
+        return self
 
 
 class PositionIn(BaseModel):
@@ -107,8 +169,10 @@ def _to_proposal(p: ProposalIn) -> TradeProposal:
 def _to_constraints(c: ConstraintsIn) -> AccountConstraints:
     return AccountConstraints(
         equity=c.equity,
-        reliability=c.reliability,
-        sample_size=c.sample_size,
+        successes=c.successes,
+        failures=c.failures,
+        prior_alpha=c.prior_alpha,
+        prior_beta=c.prior_beta,
         max_leverage=c.max_leverage,
         max_position_fraction=c.max_position_fraction,
         stop_loss_pct=c.stop_loss_pct,

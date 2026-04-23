@@ -84,8 +84,8 @@ def test_verify_proposal_clean_approval():
         "funding_rate": 0.0012,
         "price": 68000.0,
         "equity": 10000.0,
-        "reliability": 0.8,
-        "sample_size": 20,
+        "successes": 16,
+        "failures": 4,
     })
     assert d["approves"] is True
     assert d["gate1"]["verdict"] == "approve"
@@ -100,8 +100,8 @@ def test_verify_proposal_direction_conflict():
         "funding_rate": -0.0008,   # policy would signal SHORT
         "price": 68000.0,
         "equity": 10000.0,
-        "reliability": 0.8,
-        "sample_size": 20,
+        "successes": 16,
+        "failures": 4,
     })
     assert d["approves"] is False
     assert "direction_conflicts_with_signal" in d["gate1"]["reason_codes"]

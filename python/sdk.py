@@ -51,7 +51,7 @@ surfaces as an ``AttestationError``.
         funding_rate=0.0012, price=68000.0, timestamp=0,
     )
     constraints = AccountConstraints(
-        equity=10000.0, reliability=0.8, sample_size=20,
+        equity=10000.0, successes=16, failures=4,  # Beta(1,1) prior by default
     )
     portfolio = Portfolio()
 
