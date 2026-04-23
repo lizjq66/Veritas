@@ -114,7 +114,7 @@ Gate 3's VaR check compares a quantity Veritas calls `portfolioVarBound` against
 
 i.e. the absolute combined exposure along the proposal's asset return factor. It is **not** an upper bound on full-portfolio 1-day return stddev `√xᵀΣx`; two mutually correlated existing positions that are each uncorrelated with the proposal's asset will contribute 0 to `portfolioVarBound` while still carrying real portfolio variance.
 
-Set `dailyVarLimit` as a cap on *per-proposal projected exposure*, not on whole-portfolio stddev. If you need the stronger stddev guarantee, `portfolioVarBound` is not the right input — see [`docs/var-audit-2026-04-23.md`](docs/var-audit-2026-04-23.md) for the full analysis and remediation options.
+Set `dailyVarLimit` as a cap on *per-proposal projected exposure*. This is the committed semantic of the field. Full-portfolio `√xᵀΣx` gating is not a property of `dailyVarLimit` and will not be added by redefining it — if Veritas ever ships full-portfolio VaR gating, it will be a separate constraint field and a separate gate branch. See [`docs/var-audit-2026-04-23.md`](docs/var-audit-2026-04-23.md) for the scope analysis.
 
 ## Docs
 

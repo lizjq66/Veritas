@@ -73,11 +73,14 @@ def correlationAdjustedExposure
     uncorrelated with the proposal) while still jointly carrying
     real portfolio variance.
 
-    Callers setting `AccountConstraints.dailyVarLimit` should
-    interpret it as a limit on this *projected exposure*, not on
-    full-portfolio stddev. See `docs/var-audit-2026-04-23.md` for
-    worked counter-examples and the full scope-of-validity
-    analysis.
+    `AccountConstraints.dailyVarLimit` **is** a limit on this
+    projected exposure. That is the fixed, committed semantic of the
+    field. Full-portfolio `√xᵀΣx` gating is not a property of
+    `dailyVarLimit`; if Veritas ever adds full-portfolio VaR
+    gating, it will ship as a separate constraint field and a
+    separate gate branch, not by redefining `dailyVarLimit`. See
+    `docs/var-audit-2026-04-23.md` for the scope-of-validity
+    analysis and worked counter-examples.
 
     The projected-exposure bound is an *exact* upper bound inside
     `Rat` arithmetic — no square roots, no numeric approximation —
