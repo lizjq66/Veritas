@@ -189,4 +189,101 @@ theorem aggregateReliability_score_le_each
       exact monotone ys (reliabilityScore first) first.total
     · exact aux ys (reliabilityScore first) first.total s htail
 
+
+-- ── Bayesian reliability (v0.4 Slice 1) ────────────────────────────
+--
+-- The `ReliabilityStats`/`reliabilityScore` pair above is a frequentist
+-- point estimate: `wins / total`, with a 1/2 fallback at zero-sample.
+-- That leaks two pathologies: (a) one-shot wins give reliability 1.0,
+-- pushing Gate 2 straight to the Kelly ceiling; (b) zero-observation
+-- branches read as 0.5 with no uncertainty surface. `BetaPosterior`
+-- replaces the point estimate with a Beta(α, β) posterior, defaulting
+-- to the uniform Beta(1, 1) prior (Laplace smoothing).
+--
+-- This slice adds the type, the posterior-mean computation, and three
+-- foundational theorems. Wiring it into Gate 2 (replacing
+-- `calculatePositionSize`'s frequentist reliability input) is a
+-- follow-on slice so existing Gate-2 theorems can be updated in one
+-- deliberate step.
+
+/-- Beta-posterior reliability estimate from observed binary outcomes,
+    with a Beta(α₀, β₀) prior over the underlying win rate. Default
+    priors `α₀ = β₀ = 1` give Laplace smoothing: zero observations
+    read as `1/2`, and a single win/loss updates gently toward the
+    evidence rather than saturating. -/
+structure BetaPosterior where
+  successes : Nat
+  failures : Nat
+  priorAlpha : Rat := 1
+  priorBeta : Rat := 1
+  deriving Repr, Inhabited
+
+namespace BetaPosterior
+
+/-- Posterior mean of a Beta(α₀ + successes, β₀ + failures) posterior,
+    expressed as an exact `Rat`. This is the point estimate Gate 2
+    consumes (in the follow-on slice) once the frequentist input is
+    replaced. -/
+def posteriorMean (b : BetaPosterior) : Rat :=
+  ((b.successes : Rat) + b.priorAlpha) /
+  (((b.successes + b.failures) : Rat) + b.priorAlpha + b.priorBeta)
+
+/-- Posterior mean is in `[0, 1]`. Requires non-negative priors and a
+    strictly positive prior sum (the Beta distribution is undefined at
+    `α₀ = β₀ = 0` anyway). -/
+theorem posteriorMean_bounded (b : BetaPosterior)
+    (hα : 0 ≤ b.priorAlpha) (hβ : 0 ≤ b.priorBeta)
+    (hpos : 0 < b.priorAlpha + b.priorBeta) :
+    0 ≤ posteriorMean b ∧ posteriorMean b ≤ 1 := by
+  unfold posteriorMean
+  have hnum : 0 ≤ (b.successes : Rat) + b.priorAlpha := by positivity
+  have hSF : 0 ≤ ((b.successes + b.failures) : Rat) := by positivity
+  have hden : 0 < ((b.successes + b.failures) : Rat)
+                    + b.priorAlpha + b.priorBeta := by linarith
+  refine ⟨div_nonneg hnum (le_of_lt hden), ?_⟩
+  rw [div_le_one hden]
+  have hF : 0 ≤ (b.failures : Rat) := by positivity
+  linarith
+
+/-- Adding successes never decreases the posterior mean. The
+    Bayesian analogue of `reliabilityUpdate_monotone_on_wins`, but
+    unconditionally — no `total > 0` premise needed, because the
+    prior term keeps the denominator positive even at zero
+    observations. -/
+theorem posteriorMean_monotone_in_successes
+    (b : BetaPosterior) (k : Nat)
+    (hβ : 0 ≤ b.priorBeta)
+    (hpos : 0 < b.priorAlpha + b.priorBeta) :
+    posteriorMean b
+      ≤ posteriorMean { b with successes := b.successes + k } := by
+  unfold posteriorMean
+  -- dsimp reduces the struct-update projections to their plain forms
+  -- ({b with successes := s'}.successes → s', .failures → b.failures,
+  -- .priorAlpha → b.priorAlpha, .priorBeta → b.priorBeta) so that the
+  -- subsequent `rw` and `nlinarith` can match.
+  dsimp only
+  push_cast
+  have hS : 0 ≤ (b.successes : Rat) := by positivity
+  have hF : 0 ≤ (b.failures : Rat) := by positivity
+  have hk : 0 ≤ (k : Rat) := by positivity
+  have hden1 : 0 < (b.successes : Rat) + (b.failures : Rat)
+                     + b.priorAlpha + b.priorBeta := by linarith
+  have hden2 : 0 < (b.successes : Rat) + (k : Rat) + (b.failures : Rat)
+                     + b.priorAlpha + b.priorBeta := by linarith
+  rw [div_le_div_iff₀ hden1 hden2]
+  -- Goal after cross-multiplication: reduces to 0 ≤ k·(F + β).
+  nlinarith [mul_nonneg hk hF, mul_nonneg hk hβ]
+
+/-- The uniform prior with no observations yields exactly `1/2` —
+    the canonical "I don't know" state Gate 2 sees before any
+    evidence arrives. Matches `reliabilityScore`'s `total = 0`
+    fallback, so dropping `BetaPosterior` into Gate 2 preserves
+    the zero-observation behavior. -/
+theorem posteriorMean_uniform_prior_empty :
+    posteriorMean { successes := 0, failures := 0 } = 1 / 2 := by
+  unfold posteriorMean
+  norm_num
+
+end BetaPosterior
+
 end Veritas.Learning

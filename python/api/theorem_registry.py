@@ -154,6 +154,44 @@ THEOREMS: dict[str, dict] = {
             "move to exact Rat.",
         "axioms_used": [],
     },
+    # ── v0.4 Slice 1: Bayesian reliability groundwork ─────────────
+    # Adds a Beta(α, β) posterior alongside the frequentist
+    # wins/total estimator. These theorems cover the posterior
+    # itself; integration with Gate 2 is a follow-on slice.
+    "posteriorMean_bounded": {
+        "gate": "learning",
+        "file": "Veritas/Learning/Reliability.lean",
+        "status": "proven",
+        "statement_natural_language":
+            "The posterior mean of a Beta(α+successes, β+failures) "
+            "distribution is in [0, 1] whenever the prior parameters "
+            "are non-negative and their sum is strictly positive.",
+        "axioms_used": [],
+    },
+    "posteriorMean_monotone_in_successes": {
+        "gate": "learning",
+        "file": "Veritas/Learning/Reliability.lean",
+        "status": "proven",
+        "statement_natural_language":
+            "Adding successes (Nat k) to a BetaPosterior never decreases "
+            "its posterior mean. The Bayesian analogue of "
+            "reliabilityUpdate_monotone_on_wins, but unconditional — no "
+            "'total > 0' premise is needed because the prior keeps the "
+            "denominator positive even at zero observations.",
+        "axioms_used": [],
+    },
+    "posteriorMean_uniform_prior_empty": {
+        "gate": "learning",
+        "file": "Veritas/Learning/Reliability.lean",
+        "status": "proven",
+        "statement_natural_language":
+            "The uniform prior Beta(1, 1) with no observations yields "
+            "posterior mean 1/2 — the canonical 'no evidence' state. "
+            "Matches reliabilityScore's zero-sample fallback, so "
+            "dropping BetaPosterior into Gate 2 preserves the "
+            "zero-observation behavior.",
+        "axioms_used": [],
+    },
     # ── Gate-layer soundness contracts ─────────────────────────────
     # These are first-class theorems in Veritas/Gates/*.lean; they
     # document what each gate's Approve / Resize verdict *means*
