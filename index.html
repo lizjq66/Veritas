@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Veritas — pre-trade verifier</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+    .mono { font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace; }
+    pre { font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace; }
+    .gate-pulse { animation: pulse 0.4s ease-out; }
+    @keyframes pulse { 0% { transform: scale(0.97); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen">
+  <div class="bg-slate-900 text-slate-100 text-xs sm:text-sm px-6 py-2.5 text-center">🔒 Live gallery · every certificate below is the real, Ed25519-signed verdict the Veritas <span class="mono text-emerald-300">veritas-core</span> Lean kernel produced. Pick a scenario. · <a href="https://github.com/lizjq66/Veritas" class="underline hover:text-white">source &amp; one-command local run ↗</a></div>
+
+  <!-- Hero header -->
+  <header class="border-b border-slate-200 bg-white">
+    <div class="max-w-6xl mx-auto px-6 py-5 flex items-baseline justify-between">
+      <div>
+        <h1 class="text-2xl font-bold tracking-tight">Veritas</h1>
+        <p class="text-sm text-slate-500">
+          Pre-trade verifier. Agents POST a proposal, Veritas runs it through three gates, returns a certificate.
+        </p>
+      </div>
+      <div class="text-xs text-slate-400 mono space-y-0.5 text-right">
+        <div>POST /verify/proposal</div>
+        <a href="/runner" class="underline hover:text-slate-600">example runner →</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-6 py-6">
+
+    <!-- Preset scenarios -->
+    <section class="mb-6">
+      <div class="text-xs uppercase tracking-wide text-slate-500 mb-2">Try a scenario</div>
+      <div class="flex flex-wrap gap-2" id="presets"></div>
+    </section>
+
+    <!-- Two-column: request / response -->
+    <div class="grid lg:grid-cols-5 gap-6">
+
+      <!-- ── Request ─────────────────────────────────────────── -->
+      <section class="lg:col-span-2 bg-white border border-slate-200 rounded-lg p-5">
+        <h2 class="text-sm font-semibold text-slate-700 mb-4">Trade proposal</h2>
+
+        <div class="space-y-3 text-sm">
+          <div class="grid grid-cols-2 gap-3">
+            <label class="block">
+              <span class="text-xs text-slate-500">direction</span>
+              <select id="f-direction" class="mt-1 w-full mono text-sm rounded border-slate-300 py-1 px-2">
+                <option value="LONG">LONG</option>
+                <option value="SHORT">SHORT</option>
+              </select>
+            </label>
+            <label class="block">
+              <span class="text-xs text-slate-500">notional_usd</span>
+              <input id="f-notional" type="number" step="100" class="mt-1 w-full mono text-sm rounded border-slate-300 py-1 px-2" value="1500">
+            </label>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <label class="block">
+              <span class="text-xs text-slate-500">funding_rate</span>
+              <input id="f-funding" type="number" step="0.0001" class="mt-1 w-full mono text-sm rounded border-slate-300 py-1 px-2" value="0.0012">
+            </label>
+            <label class="block">
+              <span class="text-xs text-slate-500">perp price (USD)</span>
+              <input id="f-price" type="number" step="100" class="mt-1 w-full mono text-sm rounded border-slate-300 py-1 px-2" value="68000">
+            </label>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <label class="block">
+              <span class="text-xs text-slate-500">spot_price (0 = skip basis)</span>
+              <input id="f-spot" type="number" step="100" class="mt-1 w-full mono text-sm rounded border-slate-300 py-1 px-2" value="0">
+            </label>
+            <label class="block">
+              <span class="text-xs text-slate-500">liquidations24h (0 = skip cascade)</span>
+              <input id="f-liq" type="number" step="10000000" class="mt-1 w-full mono text-sm rounded border-slate-300 py-1 px-2" value="0">
+            </label>
+          </div>
+        </div>
+
+        <h2 class="text-sm font-semibold text-slate-700 mt-6 mb-4">Account constraints</h2>
+        <div class="space-y-3 text-sm">
+          <div class="grid grid-cols-3 gap-3">
+            <label class="block">
+              <span class="text-xs text-slate-500">equity</span>
+              <input id="f-equity" type="number" step="1000" class="mt-1 w-full mono text-sm rounded border-slate-300 py-1 px-2" value="10000">
+            </label>
+            <label class="block">
+              <span class="text-xs text-slate-500">successes</span>
+              <input id="f-successes" type="number" step="1" min="0" class="mt-1 w-full mono text-sm rounded border-slate-300 py-1 px-2" value="16">
+            </label>
+            <label class="block">
+              <span class="text-xs text-slate-500">failures</span>
+              <input id="f-failures" type="number" step="1" min="0" class="mt-1 w-full mono text-sm rounded border-slate-300 py-1 px-2" value="4">
+            </label>
+          </div>
+          <p class="text-[11px] text-slate-400 leading-snug">Bayesian reliability over the proposal's assumption — Beta(1,1) prior, posterior mean <span class="mono">(successes+1)/(successes+failures+2)</span>. Cold start <span class="mono">0/0</span> → ½ (exploration).</p>
+        </div>
+
+        <h2 class="text-sm font-semibold text-slate-700 mt-6 mb-4">Existing position (optional)</h2>
+        <div class="space-y-3 text-sm">
+          <label class="flex items-center gap-2">
+            <input id="f-has-pos" type="checkbox" class="rounded border-slate-300">
+            <span class="text-xs text-slate-600">have an open position?</span>
+          </label>
+          <div id="pos-fields" class="grid grid-cols-3 gap-3 opacity-50 pointer-events-none">
+            <label class="block">
+              <span class="text-xs text-slate-500">direction</span>
+              <select id="f-pos-direction" class="mt-1 w-full mono text-sm rounded border-slate-300 py-1 px-2">
+                <option value="LONG">LONG</option>
+                <option value="SHORT">SHORT</option>
+              </select>
+            </label>
+            <label class="block">
+              <span class="text-xs text-slate-500">entry_price</span>
+              <input id="f-pos-price" type="number" step="100" class="mt-1 w-full mono text-sm rounded border-slate-300 py-1 px-2" value="67500">
+            </label>
+            <label class="block">
+              <span class="text-xs text-slate-500">size</span>
+              <input id="f-pos-size" type="number" step="0.01" class="mt-1 w-full mono text-sm rounded border-slate-300 py-1 px-2" value="0.03">
+            </label>
+          </div>
+        </div>
+
+        <button id="verify-btn" class="mt-6 w-full bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded py-2.5 transition">
+          POST /verify/proposal
+        </button>
+
+        <details class="mt-4 text-xs text-slate-500">
+          <summary class="cursor-pointer hover:text-slate-700">request body preview</summary>
+          <pre id="req-preview" class="mt-2 bg-slate-100 rounded p-3 overflow-x-auto text-[10px] leading-relaxed"></pre>
+        </details>
+      </section>
+
+      <!-- ── Response ───────────────────────────────────────── -->
+      <section class="lg:col-span-3 space-y-4">
+
+        <!-- Top summary bar -->
+        <div id="summary" class="bg-white border border-slate-200 rounded-lg p-5 flex items-center justify-between">
+          <div>
+            <div class="text-xs uppercase tracking-wide text-slate-500">Verdict</div>
+            <div id="verdict-line" class="text-lg font-semibold text-slate-400">— submit a proposal to see the certificate —</div>
+          </div>
+          <div id="final-notional" class="text-right">
+            <div class="text-xs uppercase tracking-wide text-slate-500">Final notional</div>
+            <div class="text-xl font-bold mono text-slate-400">—</div>
+          </div>
+        </div>
+
+        <!-- Three gate cards -->
+        <div class="grid md:grid-cols-3 gap-3">
+          <div id="gate1" class="bg-white border-2 border-slate-200 rounded-lg p-4 transition">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="text-xs font-semibold text-slate-500">GATE 1</span>
+              <span id="gate1-icon" class="text-slate-300 text-lg">○</span>
+            </div>
+            <div class="text-sm font-semibold text-slate-700">Signal consistency</div>
+            <div class="text-xs text-slate-500 mt-0.5">Does the direction agree with Veritas's policy? Are assumptions attached?</div>
+            <div id="gate1-verdict" class="mt-3 text-sm mono text-slate-400">—</div>
+            <div id="gate1-reasons" class="mt-1 text-xs text-slate-500 mono"></div>
+          </div>
+          <div id="gate2" class="bg-white border-2 border-slate-200 rounded-lg p-4 transition">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="text-xs font-semibold text-slate-500">GATE 2</span>
+              <span id="gate2-icon" class="text-slate-300 text-lg">○</span>
+            </div>
+            <div class="text-sm font-semibold text-slate-700">Constraint compatibility</div>
+            <div class="text-xs text-slate-500 mt-0.5">Does size fit the reliability-adjusted ceiling? Approve / resize / reject.</div>
+            <div id="gate2-verdict" class="mt-3 text-sm mono text-slate-400">—</div>
+            <div id="gate2-reasons" class="mt-1 text-xs text-slate-500 mono"></div>
+          </div>
+          <div id="gate3" class="bg-white border-2 border-slate-200 rounded-lg p-4 transition">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="text-xs font-semibold text-slate-500">GATE 3</span>
+              <span id="gate3-icon" class="text-slate-300 text-lg">○</span>
+            </div>
+            <div class="text-sm font-semibold text-slate-700">Portfolio interference</div>
+            <div class="text-xs text-slate-500 mt-0.5">Does it clash with existing positions or breach the gross-exposure cap?</div>
+            <div id="gate3-verdict" class="mt-3 text-sm mono text-slate-400">—</div>
+            <div id="gate3-reasons" class="mt-1 text-xs text-slate-500 mono"></div>
+          </div>
+        </div>
+
+        <!-- Assumptions -->
+        <div id="assumptions-block" class="bg-white border border-slate-200 rounded-lg p-4 hidden">
+          <div class="text-xs uppercase tracking-wide text-slate-500 mb-2">Assumptions attached</div>
+          <div id="assumptions-list" class="text-sm space-y-1"></div>
+        </div>
+
+        <!-- Raw JSON -->
+        <details class="bg-white border border-slate-200 rounded-lg p-4">
+          <summary class="cursor-pointer text-xs uppercase tracking-wide text-slate-500">raw certificate JSON</summary>
+          <pre id="raw-json" class="mt-3 bg-slate-50 rounded p-3 overflow-x-auto text-[10px] leading-relaxed text-slate-700"></pre>
+        </details>
+
+        <!-- Theorem chain footer -->
+        <div class="bg-slate-50 border border-slate-200 rounded-lg p-4">
+          <div class="text-xs uppercase tracking-wide text-slate-500 mb-2">Theorems backing this verdict</div>
+          <ul class="text-xs text-slate-600 space-y-1 mono">
+            <li>• verifySignal_approve_implies_consistent · <span class="text-emerald-600">proven</span></li>
+            <li>• checkConstraints_approve_within_ceiling · <span class="text-emerald-600">proven</span></li>
+            <li>• checkConstraints_resize_respects_ceiling · <span class="text-emerald-600">proven</span></li>
+            <li>• checkPortfolio_approve_respects_cap · <span class="text-emerald-600">proven</span></li>
+            <li>• certificate_soundness · <span class="text-emerald-600">proven</span></li>
+          </ul>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="max-w-6xl mx-auto px-6 py-6 text-xs text-slate-400 text-center">
+    Veritas v0.4 · Lean-backed verifier · <a href="/runner" class="underline hover:text-slate-600">example runner dashboard</a>
+  </footer>
+
+<script>
+const STATIC = true;
+const DEMO_VERDICTS = {"0":{"gate1":{"verdict":"approve"},"gate2":{"verdict":"approve"},"gate3":{"verdict":"approve"},"assumptions":[{"name":"funding_rate_reverts_within_8h","description":"When |funding_rate| > 0.05%/hr on Hyperliquid BTC perp, it returns to |funding_rate| < 0.01%/hr within 8 hours."}],"final_notional_usd":1500.0,"approves":true,"attestation":{"schema_version":2,"veritas_version":"0.4.0","build_sha":"d42ccfa33264d7aa06d0dee1aa76f5e4d90a2cef59f00969909419ec03f0ca5f","public_key":"WNbqLS0zDZyrvIbFWjx/esKEeeStnzz0jI7DGr47Dy0=","signed_at":"2026-06-13T21:36:48Z","signature":"qpjASkapRQiMUXJ82FN/Q6wNXF0B44Oj/CSmsiWIuHmlzt7MdU51vZDwZ6o/tmHlsNBhN29LrRaEatpGDEwDCg==","request_digest":"7fdc839791d170731d6002a6392add2ddb2f75a2ad4c9ad509e7cb28c47165f3"}},"1":{"gate1":{"verdict":"approve"},"gate2":{"verdict":"approve"},"gate3":{"verdict":"approve"},"assumptions":[{"name":"funding_rate_reverts_within_8h","description":"When |funding_rate| > 0.05%/hr on Hyperliquid BTC perp, it returns to |funding_rate| < 0.01%/hr within 8 hours."},{"name":"basis_reverts_within_24h","description":"When the BTC perp--spot basis exceeds \u00b10.20% on Hyperliquid vs the reference spot venue, it returns to within \u00b10.05% of zero inside 24 hours."}],"final_notional_usd":1500.0,"approves":true,"attestation":{"schema_version":2,"veritas_version":"0.4.0","build_sha":"d42ccfa33264d7aa06d0dee1aa76f5e4d90a2cef59f00969909419ec03f0ca5f","public_key":"WNbqLS0zDZyrvIbFWjx/esKEeeStnzz0jI7DGr47Dy0=","signed_at":"2026-06-13T21:36:48Z","signature":"mPoLjh123diIP+Sr+Uao2CRPTC0UJMouihHqIikwk3/sWy+JhioIy2syVya5agTM+iUWqZ+ZhYBsLvHbm3ehBw==","request_digest":"c0406469f4aa46220ef7f1e779442f3c0d4e36f1629db036c1519552fa2c9cd4"}},"2":{"gate1":{"verdict":"reject","reason_codes":["no_signal_under_policy"]},"gate2":{"verdict":"reject","reason_codes":["upstream_gate_rejected"]},"gate3":{"verdict":"reject","reason_codes":["upstream_gate_rejected"]},"assumptions":[],"final_notional_usd":0.0,"approves":false,"attestation":{"schema_version":2,"veritas_version":"0.4.0","build_sha":"d42ccfa33264d7aa06d0dee1aa76f5e4d90a2cef59f00969909419ec03f0ca5f","public_key":"WNbqLS0zDZyrvIbFWjx/esKEeeStnzz0jI7DGr47Dy0=","signed_at":"2026-06-13T21:36:48Z","signature":"XH+qREBflYBE7aJH02KdPp23+OqFO0lyKGq8+zuoUnZJtdvz0TrFJDOBh9FHLi92iXsyjAO6yAfGF+kNpeKqBw==","request_digest":"d2793717e6365a147580cb99cc9d7f8923a13e2df270333affd5c4379c834aed"}},"3":{"gate1":{"verdict":"reject","reason_codes":["strategies_contradict"]},"gate2":{"verdict":"reject","reason_codes":["upstream_gate_rejected"]},"gate3":{"verdict":"reject","reason_codes":["upstream_gate_rejected"]},"assumptions":[],"final_notional_usd":0.0,"approves":false,"attestation":{"schema_version":2,"veritas_version":"0.4.0","build_sha":"d42ccfa33264d7aa06d0dee1aa76f5e4d90a2cef59f00969909419ec03f0ca5f","public_key":"WNbqLS0zDZyrvIbFWjx/esKEeeStnzz0jI7DGr47Dy0=","signed_at":"2026-06-13T21:36:48Z","signature":"ad9lRWf3o0uDEemo+hp+3Nelc5xCGWJIfiT350OgaaTrxBw/cD90BhX5kA+mh6UYNn1Uai6bCZZydw5SHLyxDQ==","request_digest":"fc0995b2c701aab6c88dc877eb5d9629c9d4a606ddc0d808e7d8e96f363b978d"}},"4":{"gate1":{"verdict":"reject","reason_codes":["strategies_contradict"]},"gate2":{"verdict":"reject","reason_codes":["upstream_gate_rejected"]},"gate3":{"verdict":"reject","reason_codes":["upstream_gate_rejected"]},"assumptions":[],"final_notional_usd":0.0,"approves":false,"attestation":{"schema_version":2,"veritas_version":"0.4.0","build_sha":"d42ccfa33264d7aa06d0dee1aa76f5e4d90a2cef59f00969909419ec03f0ca5f","public_key":"WNbqLS0zDZyrvIbFWjx/esKEeeStnzz0jI7DGr47Dy0=","signed_at":"2026-06-13T21:36:48Z","signature":"UXdc6/GXAQHv9ubywan1lD22kZnn9z6rUzV/BglrXQYdwQawZ9ujJueM1B7a857fS1HJE2vQpcKoFtu5cd4fDA==","request_digest":"5ec51cb0ca9440e5ebe4cf4f996d9fd7f5bd301ce70414922685eac7bd006799"}},"5":{"gate1":{"verdict":"approve"},"gate2":{"verdict":"approve"},"gate3":{"verdict":"approve"},"assumptions":[{"name":"basis_reverts_within_24h","description":"When the BTC perp--spot basis exceeds \u00b10.20% on Hyperliquid vs the reference spot venue, it returns to within \u00b10.05% of zero inside 24 hours."}],"final_notional_usd":1500.0,"approves":true,"attestation":{"schema_version":2,"veritas_version":"0.4.0","build_sha":"d42ccfa33264d7aa06d0dee1aa76f5e4d90a2cef59f00969909419ec03f0ca5f","public_key":"WNbqLS0zDZyrvIbFWjx/esKEeeStnzz0jI7DGr47Dy0=","signed_at":"2026-06-13T21:36:48Z","signature":"yHUiksyJhiZPwflzpfTPiu8xk3gG2z+PBM0mavtfEg9LDTtZHYeHw6t54S//KXpnxY0iVDm8CIwiWJHRPEB0Dw==","request_digest":"43c96e40a37a8dc10590ac6d6eeb2e5ff7382ae771adc4d01ec9f720fafe4cba"}},"6":{"gate1":{"verdict":"reject","reason_codes":["direction_conflicts_with_signal"]},"gate2":{"verdict":"reject","reason_codes":["upstream_gate_rejected"]},"gate3":{"verdict":"reject","reason_codes":["upstream_gate_rejected"]},"assumptions":[],"final_notional_usd":0.0,"approves":false,"attestation":{"schema_version":2,"veritas_version":"0.4.0","build_sha":"d42ccfa33264d7aa06d0dee1aa76f5e4d90a2cef59f00969909419ec03f0ca5f","public_key":"WNbqLS0zDZyrvIbFWjx/esKEeeStnzz0jI7DGr47Dy0=","signed_at":"2026-06-13T21:36:48Z","signature":"6/bUU6HWXWI5U6Fvfc4QT11Ek7qq8ZEF8nltvOgTs3ltJaxvamIamhTbYurxGdzDPPd8rxivMzwuI1M4T8UnBw==","request_digest":"9813223118fdc46a783558d6d4f108e45e114b04954f5bb80708b74b1478d4ba"}},"7":{"gate1":{"verdict":"reject","reason_codes":["no_signal_under_policy"]},"gate2":{"verdict":"reject","reason_codes":["upstream_gate_rejected"]},"gate3":{"verdict":"reject","reason_codes":["upstream_gate_rejected"]},"assumptions":[],"final_notional_usd":0.0,"approves":false,"attestation":{"schema_version":2,"veritas_version":"0.4.0","build_sha":"d42ccfa33264d7aa06d0dee1aa76f5e4d90a2cef59f00969909419ec03f0ca5f","public_key":"WNbqLS0zDZyrvIbFWjx/esKEeeStnzz0jI7DGr47Dy0=","signed_at":"2026-06-13T21:36:48Z","signature":"giMfHeJLMgmAOBs+e+nbqbQY5al3tKwFhycBKziUHaNfYMJdm7/hFJ01Y5bo9nuUY3XDj+Y4QnZ4/vs8uIuLCg==","request_digest":"e1e8c2798de80a8324a0cd941b3daf76087181e1c37537bca754fa6529005267"}},"8":{"gate1":{"verdict":"approve"},"gate2":{"verdict":"resize","new_notional_usd":2500.0},"gate3":{"verdict":"approve"},"assumptions":[{"name":"funding_rate_reverts_within_8h","description":"When |funding_rate| > 0.05%/hr on Hyperliquid BTC perp, it returns to |funding_rate| < 0.01%/hr within 8 hours."}],"final_notional_usd":2500.0,"approves":true,"attestation":{"schema_version":2,"veritas_version":"0.4.0","build_sha":"d42ccfa33264d7aa06d0dee1aa76f5e4d90a2cef59f00969909419ec03f0ca5f","public_key":"WNbqLS0zDZyrvIbFWjx/esKEeeStnzz0jI7DGr47Dy0=","signed_at":"2026-06-13T21:36:48Z","signature":"c16DU94Of4QvXVWnsiSMT2YowIXor58Hr7J9QPcjEAdcxUWuA60Nx8CedeFDYtVPb/OEZdjlzTdkfjreCfTODw==","request_digest":"8923153ac3e90981c7b56159da0d9ed8d3eefd179680d8f018fcaf441b67b500"}},"9":{"gate1":{"verdict":"approve"},"gate2":{"verdict":"reject","reason_codes":["no_edge_reliability_below_threshold"]},"gate3":{"verdict":"reject","reason_codes":["upstream_gate_rejected"]},"assumptions":[{"name":"funding_rate_reverts_within_8h","description":"When |funding_rate| > 0.05%/hr on Hyperliquid BTC perp, it returns to |funding_rate| < 0.01%/hr within 8 hours."}],"final_notional_usd":0.0,"approves":false,"attestation":{"schema_version":2,"veritas_version":"0.4.0","build_sha":"d42ccfa33264d7aa06d0dee1aa76f5e4d90a2cef59f00969909419ec03f0ca5f","public_key":"WNbqLS0zDZyrvIbFWjx/esKEeeStnzz0jI7DGr47Dy0=","signed_at":"2026-06-13T21:36:48Z","signature":"85Qo7rLcPmM1Nd9svmjCH84eXFo9Zk+apXj9Q4bpg+9w21jvmJqMYtOopovHKqfmJfnT1g6Zlj84l7EebuDQAg==","request_digest":"1e248694fb0f6a92f3f2f1b5c633167fe3a32960af59b5407985536b9a9ae9ee"}},"10":{"gate1":{"verdict":"approve"},"gate2":{"verdict":"approve"},"gate3":{"verdict":"reject","reason_codes":["direction_conflicts_existing_position"]},"assumptions":[{"name":"funding_rate_reverts_within_8h","description":"When |funding_rate| > 0.05%/hr on Hyperliquid BTC perp, it returns to |funding_rate| < 0.01%/hr within 8 hours."}],"final_notional_usd":0.0,"approves":false,"attestation":{"schema_version":2,"veritas_version":"0.4.0","build_sha":"d42ccfa33264d7aa06d0dee1aa76f5e4d90a2cef59f00969909419ec03f0ca5f","public_key":"WNbqLS0zDZyrvIbFWjx/esKEeeStnzz0jI7DGr47Dy0=","signed_at":"2026-06-13T21:36:48Z","signature":"riwFXjK0S/ahOaeloviACxJOpEME7yKIGR0x+u47bU6pzykk5LdytIOkt8SXEWEp6IdB1O1tqM25/w7cuOSZCg==","request_digest":"fe65b432ab6c1dbfc3c690a2c427a907441634f72133e271061e2aedf3383221"}}};
+window.__preset = null;
+const $ = (id) => document.getElementById(id);
+
+// ── Preset scenarios ─────────────────────────────────────────────
+const PRESETS = [
+  { label: "Clean approve (funding only)",
+    dir: "LONG",  notional: 1500, funding:  0.0012, price: 68000, spot: 0,     liq: 0,         equity: 10000, succ: 16, fail: 4,  pos: null },
+  { label: "All 3 strategies agree",
+    dir: "LONG",  notional: 1500, funding:  0.0012, price: 67700, spot: 68000, liq: -100e6,    equity: 10000, succ: 16, fail: 4,  pos: null },
+  { label: "Cascade alone fires SHORT",
+    dir: "SHORT", notional: 1500, funding:  0,      price: 68000, spot: 0,     liq:  100e6,    equity: 10000, succ: 16, fail: 4,  pos: null },
+  { label: "3-way conflict (2 SHORT, 1 LONG)",
+    dir: "SHORT", notional: 1500, funding:  0.0012, price: 68300, spot: 68000, liq:  100e6,    equity: 10000, succ: 16, fail: 4,  pos: null },
+  { label: "Strategies contradict (funding vs basis)",
+    dir: "LONG",  notional: 1500, funding:  0.0012, price: 68300, spot: 68000, liq: 0,         equity: 10000, succ: 16, fail: 4,  pos: null },
+  { label: "Only basis fires → SHORT",
+    dir: "SHORT", notional: 1500, funding:  0,      price: 68300, spot: 68000, liq: 0,         equity: 10000, succ: 16, fail: 4,  pos: null },
+  { label: "Direction conflict (vs funding)",
+    dir: "LONG",  notional: 1500, funding: -0.0008, price: 68000, spot: 0,     liq: 0,         equity: 10000, succ: 16, fail: 4,  pos: null },
+  { label: "No signal under any policy",
+    dir: "LONG",  notional: 1500, funding:  0.0001, price: 68000, spot: 0,     liq: 0,         equity: 10000, succ: 16, fail: 4,  pos: null },
+  { label: "Oversize → resize",
+    dir: "LONG",  notional: 9000, funding:  0.0012, price: 68000, spot: 0,     liq: 0,         equity: 10000, succ: 27, fail: 3,  pos: null },
+  { label: "No edge (posterior ≤ ½)",
+    dir: "LONG",  notional: 1000, funding:  0.0012, price: 68000, spot: 0,     liq: 0,         equity: 10000, succ: 15, fail: 15, pos: null },
+  { label: "Portfolio conflict",
+    dir: "LONG",  notional: 1000, funding:  0.0012, price: 68000, spot: 0,     liq: 0,         equity: 10000, succ: 16, fail: 4,  pos: { dir: "SHORT", entry: 67500, size: 0.03 } },
+];
+
+function renderPresets() {
+  const c = $("presets");
+  c.innerHTML = PRESETS.map((p, i) =>
+    `<button data-i="${i}" class="preset px-3 py-1.5 text-xs rounded border border-slate-300 bg-white hover:bg-slate-100 hover:border-slate-400 transition">${p.label}</button>`
+  ).join("");
+  c.querySelectorAll(".preset").forEach(b => b.addEventListener("click", () => { window.__preset = +b.dataset.i; applyPreset(PRESETS[+b.dataset.i]); }));
+}
+function applyPreset(p) {
+  $("f-direction").value = p.dir;
+  $("f-notional").value = p.notional;
+  $("f-funding").value = p.funding;
+  $("f-price").value = p.price;
+  $("f-spot").value = p.spot || 0;
+  $("f-liq").value = p.liq || 0;
+  $("f-equity").value = p.equity;
+  $("f-successes").value = p.succ;
+  $("f-failures").value = p.fail;
+  $("f-has-pos").checked = !!p.pos;
+  togglePos();
+  if (p.pos) {
+    $("f-pos-direction").value = p.pos.dir;
+    $("f-pos-price").value = p.pos.entry;
+    $("f-pos-size").value = p.pos.size;
+  }
+  updatePreview();
+  verify();
+}
+renderPresets();
+
+// ── Form state ──────────────────────────────────────────────────
+function buildBody() {
+  const body = {
+    proposal: {
+      direction: $("f-direction").value,
+      notional_usd: +$("f-notional").value,
+      funding_rate: +$("f-funding").value,
+      price: +$("f-price").value,
+      timestamp: 0,
+      open_interest: 0,
+      spot_price: +$("f-spot").value,
+      liquidations24h: +$("f-liq").value,
+    },
+    constraints: {
+      equity: +$("f-equity").value,
+      successes: +$("f-successes").value,
+      failures: +$("f-failures").value,
+      max_leverage: 1.0,
+      max_position_fraction: 0.25,
+      stop_loss_pct: 5.0,
+    },
+  };
+  if ($("f-has-pos").checked) {
+    body.portfolio = {
+      positions: [{
+        direction: $("f-pos-direction").value,
+        entry_price: +$("f-pos-price").value,
+        size: +$("f-pos-size").value,
+      }],
+      max_gross_exposure_fraction: 0.50,
+    };
+  }
+  return body;
+}
+
+function togglePos() {
+  const on = $("f-has-pos").checked;
+  $("pos-fields").className = "grid grid-cols-3 gap-3 " + (on ? "" : "opacity-50 pointer-events-none");
+  updatePreview();
+}
+function updatePreview() {
+  $("req-preview").textContent = JSON.stringify(buildBody(), null, 2);
+}
+document.querySelectorAll("input, select").forEach(el => el.addEventListener("change", () => { window.__preset = null; updatePreview(); }));
+$("f-has-pos").addEventListener("change", togglePos);
+updatePreview();
+
+// ── Verify ──────────────────────────────────────────────────────
+function resetGates() {
+  ["gate1", "gate2", "gate3"].forEach(id => renderGate(id, null));
+  $("assumptions-block").classList.add("hidden");
+  $("raw-json").textContent = "";
+  $("final-notional").querySelector(".text-xl").textContent = "—";
+  $("final-notional").querySelector(".text-xl").className = "text-xl font-bold mono text-slate-400";
+}
+function verify() {
+  const idx = window.__preset;
+  if (idx === null || idx === undefined || !(idx in DEMO_VERDICTS)) {
+    // Custom input: this hosted gallery has no Lean kernel behind it.
+    resetGates();
+    $("verdict-line").innerHTML = 'Hosted gallery — pick a preset above. For arbitrary proposals, run Veritas locally: <a href="' + "https://github.com/lizjq66/Veritas" + '" class="underline text-slate-600">github.com/lizjq66/Veritas</a>';
+    $("verdict-line").className = "text-sm font-medium text-slate-500";
+    return;
+  }
+  renderCert(DEMO_VERDICTS[idx]);
+}
+$("verify-btn").addEventListener("click", verify);
+
+// ── Render certificate ──────────────────────────────────────────
+function renderGate(id, verdict) {
+  const card = $(id);
+  const icon = $(id + "-icon");
+  const vEl = $(id + "-verdict");
+  const rEl = $(id + "-reasons");
+  card.classList.add("gate-pulse");
+  setTimeout(() => card.classList.remove("gate-pulse"), 400);
+
+  if (!verdict) {
+    card.className = "bg-white border-2 border-slate-200 rounded-lg p-4 transition";
+    icon.textContent = "○"; icon.className = "text-slate-300 text-lg";
+    vEl.textContent = "—"; vEl.className = "mt-3 text-sm mono text-slate-400";
+    rEl.textContent = "";
+    return;
+  }
+  const v = verdict.verdict;
+  const colors = {
+    approve: ["border-emerald-500", "text-emerald-700", "text-emerald-600", "✓"],
+    resize:  ["border-amber-500",   "text-amber-700",   "text-amber-600",   "→"],
+    reject:  ["border-red-500",     "text-red-700",     "text-red-600",     "✗"],
+  }[v] || ["border-slate-200", "text-slate-700", "text-slate-500", "?"];
+
+  card.className = `bg-white border-2 ${colors[0]} rounded-lg p-4 transition`;
+  icon.textContent = colors[3];
+  icon.className = `${colors[2]} text-lg font-bold`;
+
+  let label = v;
+  if (v === "resize") label = `resize → $${Number(verdict.new_notional_usd).toLocaleString()}`;
+  vEl.textContent = label;
+  vEl.className = `mt-3 text-sm mono font-semibold ${colors[1]}`;
+
+  const reasons = verdict.reason_codes || [];
+  rEl.textContent = reasons.length ? reasons.join(" · ") : "";
+}
+
+function renderCert(cert) {
+  $("raw-json").textContent = JSON.stringify(cert, null, 2);
+  renderGate("gate1", cert.gate1);
+  renderGate("gate2", cert.gate2);
+  renderGate("gate3", cert.gate3);
+
+  // Summary bar
+  const approves = cert.approves;
+  $("verdict-line").textContent = approves ? "APPROVED" : "REJECTED";
+  $("verdict-line").className = "text-lg font-semibold " + (approves ? "text-emerald-600" : "text-red-600");
+  const finalBox = $("final-notional");
+  finalBox.querySelector(".text-xl").textContent = "$" + Number(cert.final_notional_usd || 0).toLocaleString();
+  finalBox.querySelector(".text-xl").className = "text-xl font-bold mono " + (approves ? "text-emerald-700" : "text-slate-400");
+
+  // Assumptions
+  const block = $("assumptions-block");
+  const list = $("assumptions-list");
+  if (cert.assumptions && cert.assumptions.length) {
+    block.classList.remove("hidden");
+    list.innerHTML = cert.assumptions.map(a =>
+      `<div class="border-l-2 border-emerald-500 pl-3">
+         <div class="mono text-xs text-slate-700">${a.name}</div>
+         <div class="text-xs text-slate-500">${a.description || ""}</div>
+       </div>`
+    ).join("");
+  } else {
+    block.classList.add("hidden");
+  }
+}
+
+// Kick off the first preset so the page isn't empty on load.
+window.__preset = 0; applyPreset(PRESETS[0]);
+</script>
+
+</body>
+</html>
