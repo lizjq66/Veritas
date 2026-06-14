@@ -117,5 +117,18 @@ function verify() {
 assert OLD_VERIFY in html, "verify() anchor not found — did index.html change?"
 html = html.replace(OLD_VERIFY, NEW_VERIFY, 1)
 
+# ── 7. Drop the example-runner dashboard links ──────────────────────────────
+# The runner is a backend example with no static deployment; on the hosted
+# gallery both /runner links would 404. Strip them (header + footer).
+RUNNER_HEADER = '\n        <a href="/runner" class="underline hover:text-slate-600">example runner &rarr;</a>'
+RUNNER_HEADER_ALT = '\n        <a href="/runner" class="underline hover:text-slate-600">example runner →</a>'
+RUNNER_FOOTER = ' · <a href="/runner" class="underline hover:text-slate-600">example runner dashboard</a>'
+header_hit = RUNNER_HEADER if RUNNER_HEADER in html else RUNNER_HEADER_ALT
+assert header_hit in html, "runner header link anchor not found — did index.html change?"
+assert RUNNER_FOOTER in html, "runner footer link anchor not found — did index.html change?"
+html = html.replace(header_hit, "", 1)
+html = html.replace(RUNNER_FOOTER, "", 1)
+assert "/runner" not in html, "a /runner link survived the static build"
+
 OUT.write_text(html)
 print(f"wrote {OUT} ({len(html):,} bytes, {len(verdicts)} embedded certificates)")
