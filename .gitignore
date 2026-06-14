@@ -10,3 +10,9 @@ __pycache__/
 .lake/
 lake-packages/
 build/
+
+# Example-runner journal: rows carry per-run timestamps, so the binary
+# always shows dirty. The committed text artifacts (events.jsonl,
+# summary.md) capture the same deterministic session. Regenerate with
+# `pytest tests/test_loop.py`.
+tests/demo_output/journal.db
