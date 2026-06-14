@@ -1,0 +1,607 @@
+{
+  "0": {
+    "label": "Clean approve (funding only)",
+    "body": {
+      "proposal": {
+        "direction": "LONG",
+        "notional_usd": 1500,
+        "funding_rate": 0.0012,
+        "price": 68000,
+        "timestamp": 0,
+        "open_interest": 0,
+        "spot_price": 0,
+        "liquidations24h": 0
+      },
+      "constraints": {
+        "equity": 10000,
+        "successes": 16,
+        "failures": 4,
+        "max_leverage": 1.0,
+        "max_position_fraction": 0.25,
+        "stop_loss_pct": 5.0
+      }
+    },
+    "cert": {
+      "gate1": {
+        "verdict": "approve"
+      },
+      "gate2": {
+        "verdict": "approve"
+      },
+      "gate3": {
+        "verdict": "approve"
+      },
+      "assumptions": [
+        {
+          "name": "funding_rate_reverts_within_8h",
+          "description": "When |funding_rate| > 0.05%/hr on Hyperliquid BTC perp, it returns to |funding_rate| < 0.01%/hr within 8 hours."
+        }
+      ],
+      "final_notional_usd": 1500.0,
+      "approves": true,
+      "attestation": {
+        "schema_version": 2,
+        "veritas_version": "0.4.0",
+        "build_sha": "d42ccfa33264d7aa06d0dee1aa76f5e4d90a2cef59f00969909419ec03f0ca5f",
+        "public_key": "WNbqLS0zDZyrvIbFWjx/esKEeeStnzz0jI7DGr47Dy0=",
+        "signed_at": "2026-06-13T21:36:48Z",
+        "signature": "qpjASkapRQiMUXJ82FN/Q6wNXF0B44Oj/CSmsiWIuHmlzt7MdU51vZDwZ6o/tmHlsNBhN29LrRaEatpGDEwDCg==",
+        "request_digest": "7fdc839791d170731d6002a6392add2ddb2f75a2ad4c9ad509e7cb28c47165f3"
+      }
+    }
+  },
+  "1": {
+    "label": "All 3 strategies agree",
+    "body": {
+      "proposal": {
+        "direction": "LONG",
+        "notional_usd": 1500,
+        "funding_rate": 0.0012,
+        "price": 67700,
+        "timestamp": 0,
+        "open_interest": 0,
+        "spot_price": 68000,
+        "liquidations24h": -100000000.0
+      },
+      "constraints": {
+        "equity": 10000,
+        "successes": 16,
+        "failures": 4,
+        "max_leverage": 1.0,
+        "max_position_fraction": 0.25,
+        "stop_loss_pct": 5.0
+      }
+    },
+    "cert": {
+      "gate1": {
+        "verdict": "approve"
+      },
+      "gate2": {
+        "verdict": "approve"
+      },
+      "gate3": {
+        "verdict": "approve"
+      },
+      "assumptions": [
+        {
+          "name": "funding_rate_reverts_within_8h",
+          "description": "When |funding_rate| > 0.05%/hr on Hyperliquid BTC perp, it returns to |funding_rate| < 0.01%/hr within 8 hours."
+        },
+        {
+          "name": "basis_reverts_within_24h",
+          "description": "When the BTC perp--spot basis exceeds \u00b10.20% on Hyperliquid vs the reference spot venue, it returns to within \u00b10.05% of zero inside 24 hours."
+        }
+      ],
+      "final_notional_usd": 1500.0,
+      "approves": true,
+      "attestation": {
+        "schema_version": 2,
+        "veritas_version": "0.4.0",
+        "build_sha": "d42ccfa33264d7aa06d0dee1aa76f5e4d90a2cef59f00969909419ec03f0ca5f",
+        "public_key": "WNbqLS0zDZyrvIbFWjx/esKEeeStnzz0jI7DGr47Dy0=",
+        "signed_at": "2026-06-13T21:36:48Z",
+        "signature": "mPoLjh123diIP+Sr+Uao2CRPTC0UJMouihHqIikwk3/sWy+JhioIy2syVya5agTM+iUWqZ+ZhYBsLvHbm3ehBw==",
+        "request_digest": "c0406469f4aa46220ef7f1e779442f3c0d4e36f1629db036c1519552fa2c9cd4"
+      }
+    }
+  },
+  "2": {
+    "label": "Cascade alone fires SHORT",
+    "body": {
+      "proposal": {
+        "direction": "SHORT",
+        "notional_usd": 1500,
+        "funding_rate": 0,
+        "price": 68000,
+        "timestamp": 0,
+        "open_interest": 0,
+        "spot_price": 0,
+        "liquidations24h": 100000000.0
+      },
+      "constraints": {
+        "equity": 10000,
+        "successes": 16,
+        "failures": 4,
+        "max_leverage": 1.0,
+        "max_position_fraction": 0.25,
+        "stop_loss_pct": 5.0
+      }
+    },
+    "cert": {
+      "gate1": {
+        "verdict": "reject",
+        "reason_codes": [
+          "no_signal_under_policy"
+        ]
+      },
+      "gate2": {
+        "verdict": "reject",
+        "reason_codes": [
+          "upstream_gate_rejected"
+        ]
+      },
+      "gate3": {
+        "verdict": "reject",
+        "reason_codes": [
+          "upstream_gate_rejected"
+        ]
+      },
+      "assumptions": [],
+      "final_notional_usd": 0.0,
+      "approves": false,
+      "attestation": {
+        "schema_version": 2,
+        "veritas_version": "0.4.0",
+        "build_sha": "d42ccfa33264d7aa06d0dee1aa76f5e4d90a2cef59f00969909419ec03f0ca5f",
+        "public_key": "WNbqLS0zDZyrvIbFWjx/esKEeeStnzz0jI7DGr47Dy0=",
+        "signed_at": "2026-06-13T21:36:48Z",
+        "signature": "XH+qREBflYBE7aJH02KdPp23+OqFO0lyKGq8+zuoUnZJtdvz0TrFJDOBh9FHLi92iXsyjAO6yAfGF+kNpeKqBw==",
+        "request_digest": "d2793717e6365a147580cb99cc9d7f8923a13e2df270333affd5c4379c834aed"
+      }
+    }
+  },
+  "3": {
+    "label": "3-way conflict (2 SHORT, 1 LONG)",
+    "body": {
+      "proposal": {
+        "direction": "SHORT",
+        "notional_usd": 1500,
+        "funding_rate": 0.0012,
+        "price": 68300,
+        "timestamp": 0,
+        "open_interest": 0,
+        "spot_price": 68000,
+        "liquidations24h": 100000000.0
+      },
+      "constraints": {
+        "equity": 10000,
+        "successes": 16,
+        "failures": 4,
+        "max_leverage": 1.0,
+        "max_position_fraction": 0.25,
+        "stop_loss_pct": 5.0
+      }
+    },
+    "cert": {
+      "gate1": {
+        "verdict": "reject",
+        "reason_codes": [
+          "strategies_contradict"
+        ]
+      },
+      "gate2": {
+        "verdict": "reject",
+        "reason_codes": [
+          "upstream_gate_rejected"
+        ]
+      },
+      "gate3": {
+        "verdict": "reject",
+        "reason_codes": [
+          "upstream_gate_rejected"
+        ]
+      },
+      "assumptions": [],
+      "final_notional_usd": 0.0,
+      "approves": false,
+      "attestation": {
+        "schema_version": 2,
+        "veritas_version": "0.4.0",
+        "build_sha": "d42ccfa33264d7aa06d0dee1aa76f5e4d90a2cef59f00969909419ec03f0ca5f",
+        "public_key": "WNbqLS0zDZyrvIbFWjx/esKEeeStnzz0jI7DGr47Dy0=",
+        "signed_at": "2026-06-13T21:36:48Z",
+        "signature": "ad9lRWf3o0uDEemo+hp+3Nelc5xCGWJIfiT350OgaaTrxBw/cD90BhX5kA+mh6UYNn1Uai6bCZZydw5SHLyxDQ==",
+        "request_digest": "fc0995b2c701aab6c88dc877eb5d9629c9d4a606ddc0d808e7d8e96f363b978d"
+      }
+    }
+  },
+  "4": {
+    "label": "Strategies contradict (funding vs basis)",
+    "body": {
+      "proposal": {
+        "direction": "LONG",
+        "notional_usd": 1500,
+        "funding_rate": 0.0012,
+        "price": 68300,
+        "timestamp": 0,
+        "open_interest": 0,
+        "spot_price": 68000,
+        "liquidations24h": 0
+      },
+      "constraints": {
+        "equity": 10000,
+        "successes": 16,
+        "failures": 4,
+        "max_leverage": 1.0,
+        "max_position_fraction": 0.25,
+        "stop_loss_pct": 5.0
+      }
+    },
+    "cert": {
+      "gate1": {
+        "verdict": "reject",
+        "reason_codes": [
+          "strategies_contradict"
+        ]
+      },
+      "gate2": {
+        "verdict": "reject",
+        "reason_codes": [
+          "upstream_gate_rejected"
+        ]
+      },
+      "gate3": {
+        "verdict": "reject",
+        "reason_codes": [
+          "upstream_gate_rejected"
+        ]
+      },
+      "assumptions": [],
+      "final_notional_usd": 0.0,
+      "approves": false,
+      "attestation": {
+        "schema_version": 2,
+        "veritas_version": "0.4.0",
+        "build_sha": "d42ccfa33264d7aa06d0dee1aa76f5e4d90a2cef59f00969909419ec03f0ca5f",
+        "public_key": "WNbqLS0zDZyrvIbFWjx/esKEeeStnzz0jI7DGr47Dy0=",
+        "signed_at": "2026-06-13T21:36:48Z",
+        "signature": "UXdc6/GXAQHv9ubywan1lD22kZnn9z6rUzV/BglrXQYdwQawZ9ujJueM1B7a857fS1HJE2vQpcKoFtu5cd4fDA==",
+        "request_digest": "5ec51cb0ca9440e5ebe4cf4f996d9fd7f5bd301ce70414922685eac7bd006799"
+      }
+    }
+  },
+  "5": {
+    "label": "Only basis fires -> SHORT",
+    "body": {
+      "proposal": {
+        "direction": "SHORT",
+        "notional_usd": 1500,
+        "funding_rate": 0,
+        "price": 68300,
+        "timestamp": 0,
+        "open_interest": 0,
+        "spot_price": 68000,
+        "liquidations24h": 0
+      },
+      "constraints": {
+        "equity": 10000,
+        "successes": 16,
+        "failures": 4,
+        "max_leverage": 1.0,
+        "max_position_fraction": 0.25,
+        "stop_loss_pct": 5.0
+      }
+    },
+    "cert": {
+      "gate1": {
+        "verdict": "approve"
+      },
+      "gate2": {
+        "verdict": "approve"
+      },
+      "gate3": {
+        "verdict": "approve"
+      },
+      "assumptions": [
+        {
+          "name": "basis_reverts_within_24h",
+          "description": "When the BTC perp--spot basis exceeds \u00b10.20% on Hyperliquid vs the reference spot venue, it returns to within \u00b10.05% of zero inside 24 hours."
+        }
+      ],
+      "final_notional_usd": 1500.0,
+      "approves": true,
+      "attestation": {
+        "schema_version": 2,
+        "veritas_version": "0.4.0",
+        "build_sha": "d42ccfa33264d7aa06d0dee1aa76f5e4d90a2cef59f00969909419ec03f0ca5f",
+        "public_key": "WNbqLS0zDZyrvIbFWjx/esKEeeStnzz0jI7DGr47Dy0=",
+        "signed_at": "2026-06-13T21:36:48Z",
+        "signature": "yHUiksyJhiZPwflzpfTPiu8xk3gG2z+PBM0mavtfEg9LDTtZHYeHw6t54S//KXpnxY0iVDm8CIwiWJHRPEB0Dw==",
+        "request_digest": "43c96e40a37a8dc10590ac6d6eeb2e5ff7382ae771adc4d01ec9f720fafe4cba"
+      }
+    }
+  },
+  "6": {
+    "label": "Direction conflict (vs funding)",
+    "body": {
+      "proposal": {
+        "direction": "LONG",
+        "notional_usd": 1500,
+        "funding_rate": -0.0008,
+        "price": 68000,
+        "timestamp": 0,
+        "open_interest": 0,
+        "spot_price": 0,
+        "liquidations24h": 0
+      },
+      "constraints": {
+        "equity": 10000,
+        "successes": 16,
+        "failures": 4,
+        "max_leverage": 1.0,
+        "max_position_fraction": 0.25,
+        "stop_loss_pct": 5.0
+      }
+    },
+    "cert": {
+      "gate1": {
+        "verdict": "reject",
+        "reason_codes": [
+          "direction_conflicts_with_signal"
+        ]
+      },
+      "gate2": {
+        "verdict": "reject",
+        "reason_codes": [
+          "upstream_gate_rejected"
+        ]
+      },
+      "gate3": {
+        "verdict": "reject",
+        "reason_codes": [
+          "upstream_gate_rejected"
+        ]
+      },
+      "assumptions": [],
+      "final_notional_usd": 0.0,
+      "approves": false,
+      "attestation": {
+        "schema_version": 2,
+        "veritas_version": "0.4.0",
+        "build_sha": "d42ccfa33264d7aa06d0dee1aa76f5e4d90a2cef59f00969909419ec03f0ca5f",
+        "public_key": "WNbqLS0zDZyrvIbFWjx/esKEeeStnzz0jI7DGr47Dy0=",
+        "signed_at": "2026-06-13T21:36:48Z",
+        "signature": "6/bUU6HWXWI5U6Fvfc4QT11Ek7qq8ZEF8nltvOgTs3ltJaxvamIamhTbYurxGdzDPPd8rxivMzwuI1M4T8UnBw==",
+        "request_digest": "9813223118fdc46a783558d6d4f108e45e114b04954f5bb80708b74b1478d4ba"
+      }
+    }
+  },
+  "7": {
+    "label": "No signal under any policy",
+    "body": {
+      "proposal": {
+        "direction": "LONG",
+        "notional_usd": 1500,
+        "funding_rate": 0.0001,
+        "price": 68000,
+        "timestamp": 0,
+        "open_interest": 0,
+        "spot_price": 0,
+        "liquidations24h": 0
+      },
+      "constraints": {
+        "equity": 10000,
+        "successes": 16,
+        "failures": 4,
+        "max_leverage": 1.0,
+        "max_position_fraction": 0.25,
+        "stop_loss_pct": 5.0
+      }
+    },
+    "cert": {
+      "gate1": {
+        "verdict": "reject",
+        "reason_codes": [
+          "no_signal_under_policy"
+        ]
+      },
+      "gate2": {
+        "verdict": "reject",
+        "reason_codes": [
+          "upstream_gate_rejected"
+        ]
+      },
+      "gate3": {
+        "verdict": "reject",
+        "reason_codes": [
+          "upstream_gate_rejected"
+        ]
+      },
+      "assumptions": [],
+      "final_notional_usd": 0.0,
+      "approves": false,
+      "attestation": {
+        "schema_version": 2,
+        "veritas_version": "0.4.0",
+        "build_sha": "d42ccfa33264d7aa06d0dee1aa76f5e4d90a2cef59f00969909419ec03f0ca5f",
+        "public_key": "WNbqLS0zDZyrvIbFWjx/esKEeeStnzz0jI7DGr47Dy0=",
+        "signed_at": "2026-06-13T21:36:48Z",
+        "signature": "giMfHeJLMgmAOBs+e+nbqbQY5al3tKwFhycBKziUHaNfYMJdm7/hFJ01Y5bo9nuUY3XDj+Y4QnZ4/vs8uIuLCg==",
+        "request_digest": "e1e8c2798de80a8324a0cd941b3daf76087181e1c37537bca754fa6529005267"
+      }
+    }
+  },
+  "8": {
+    "label": "Oversize -> resize",
+    "body": {
+      "proposal": {
+        "direction": "LONG",
+        "notional_usd": 9000,
+        "funding_rate": 0.0012,
+        "price": 68000,
+        "timestamp": 0,
+        "open_interest": 0,
+        "spot_price": 0,
+        "liquidations24h": 0
+      },
+      "constraints": {
+        "equity": 10000,
+        "successes": 27,
+        "failures": 3,
+        "max_leverage": 1.0,
+        "max_position_fraction": 0.25,
+        "stop_loss_pct": 5.0
+      }
+    },
+    "cert": {
+      "gate1": {
+        "verdict": "approve"
+      },
+      "gate2": {
+        "verdict": "resize",
+        "new_notional_usd": 2500.0
+      },
+      "gate3": {
+        "verdict": "approve"
+      },
+      "assumptions": [
+        {
+          "name": "funding_rate_reverts_within_8h",
+          "description": "When |funding_rate| > 0.05%/hr on Hyperliquid BTC perp, it returns to |funding_rate| < 0.01%/hr within 8 hours."
+        }
+      ],
+      "final_notional_usd": 2500.0,
+      "approves": true,
+      "attestation": {
+        "schema_version": 2,
+        "veritas_version": "0.4.0",
+        "build_sha": "d42ccfa33264d7aa06d0dee1aa76f5e4d90a2cef59f00969909419ec03f0ca5f",
+        "public_key": "WNbqLS0zDZyrvIbFWjx/esKEeeStnzz0jI7DGr47Dy0=",
+        "signed_at": "2026-06-13T21:36:48Z",
+        "signature": "c16DU94Of4QvXVWnsiSMT2YowIXor58Hr7J9QPcjEAdcxUWuA60Nx8CedeFDYtVPb/OEZdjlzTdkfjreCfTODw==",
+        "request_digest": "8923153ac3e90981c7b56159da0d9ed8d3eefd179680d8f018fcaf441b67b500"
+      }
+    }
+  },
+  "9": {
+    "label": "No edge (posterior <= 1/2)",
+    "body": {
+      "proposal": {
+        "direction": "LONG",
+        "notional_usd": 1000,
+        "funding_rate": 0.0012,
+        "price": 68000,
+        "timestamp": 0,
+        "open_interest": 0,
+        "spot_price": 0,
+        "liquidations24h": 0
+      },
+      "constraints": {
+        "equity": 10000,
+        "successes": 15,
+        "failures": 15,
+        "max_leverage": 1.0,
+        "max_position_fraction": 0.25,
+        "stop_loss_pct": 5.0
+      }
+    },
+    "cert": {
+      "gate1": {
+        "verdict": "approve"
+      },
+      "gate2": {
+        "verdict": "reject",
+        "reason_codes": [
+          "no_edge_reliability_below_threshold"
+        ]
+      },
+      "gate3": {
+        "verdict": "reject",
+        "reason_codes": [
+          "upstream_gate_rejected"
+        ]
+      },
+      "assumptions": [
+        {
+          "name": "funding_rate_reverts_within_8h",
+          "description": "When |funding_rate| > 0.05%/hr on Hyperliquid BTC perp, it returns to |funding_rate| < 0.01%/hr within 8 hours."
+        }
+      ],
+      "final_notional_usd": 0.0,
+      "approves": false,
+      "attestation": {
+        "schema_version": 2,
+        "veritas_version": "0.4.0",
+        "build_sha": "d42ccfa33264d7aa06d0dee1aa76f5e4d90a2cef59f00969909419ec03f0ca5f",
+        "public_key": "WNbqLS0zDZyrvIbFWjx/esKEeeStnzz0jI7DGr47Dy0=",
+        "signed_at": "2026-06-13T21:36:48Z",
+        "signature": "85Qo7rLcPmM1Nd9svmjCH84eXFo9Zk+apXj9Q4bpg+9w21jvmJqMYtOopovHKqfmJfnT1g6Zlj84l7EebuDQAg==",
+        "request_digest": "1e248694fb0f6a92f3f2f1b5c633167fe3a32960af59b5407985536b9a9ae9ee"
+      }
+    }
+  },
+  "10": {
+    "label": "Portfolio conflict",
+    "body": {
+      "proposal": {
+        "direction": "LONG",
+        "notional_usd": 1000,
+        "funding_rate": 0.0012,
+        "price": 68000,
+        "timestamp": 0,
+        "open_interest": 0,
+        "spot_price": 0,
+        "liquidations24h": 0
+      },
+      "constraints": {
+        "equity": 10000,
+        "successes": 16,
+        "failures": 4,
+        "max_leverage": 1.0,
+        "max_position_fraction": 0.25,
+        "stop_loss_pct": 5.0
+      },
+      "portfolio": {
+        "positions": [
+          {
+            "direction": "SHORT",
+            "entry_price": 67500,
+            "size": 0.03
+          }
+        ],
+        "max_gross_exposure_fraction": 0.5
+      }
+    },
+    "cert": {
+      "gate1": {
+        "verdict": "approve"
+      },
+      "gate2": {
+        "verdict": "approve"
+      },
+      "gate3": {
+        "verdict": "reject",
+        "reason_codes": [
+          "direction_conflicts_existing_position"
+        ]
+      },
+      "assumptions": [
+        {
+          "name": "funding_rate_reverts_within_8h",
+          "description": "When |funding_rate| > 0.05%/hr on Hyperliquid BTC perp, it returns to |funding_rate| < 0.01%/hr within 8 hours."
+        }
+      ],
+      "final_notional_usd": 0.0,
+      "approves": false,
+      "attestation": {
+        "schema_version": 2,
+        "veritas_version": "0.4.0",
+        "build_sha": "d42ccfa33264d7aa06d0dee1aa76f5e4d90a2cef59f00969909419ec03f0ca5f",
+        "public_key": "WNbqLS0zDZyrvIbFWjx/esKEeeStnzz0jI7DGr47Dy0=",
+        "signed_at": "2026-06-13T21:36:48Z",
+        "signature": "riwFXjK0S/ahOaeloviACxJOpEME7yKIGR0x+u47bU6pzykk5LdytIOkt8SXEWEp6IdB1O1tqM25/w7cuOSZCg==",
+        "request_digest": "fe65b432ab6c1dbfc3c690a2c427a907441634f72133e271061e2aedf3383221"
+      }
+    }
+  }
+}

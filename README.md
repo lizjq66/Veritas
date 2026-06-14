@@ -32,6 +32,23 @@ Gate logic is written in Lean 4 with closed proofs (38 theorems, 0 `sorry`, 0 Ve
 
 Veritas is **not** a trading bot. It has no market view, no loop, no strategy, and no connection to any exchange. You bring the venue; Veritas returns the verdict. The same call works for a LangGraph node, a Claude tool-use agent, or a shell script hitting `curl`.
 
+## Demo
+
+**[▶ Live playground](https://lizjq66.github.io/Veritas/)** — a backend-free gallery of real certificates. Pick a scenario and inspect the verdict; every certificate shown was produced offline by the Lean kernel and is Ed25519-signed, not faked in the browser.
+
+Prefer to run it against the kernel yourself? `./demo.sh` walks the three gates in your terminal, or `python -m python.api.run` then `open http://localhost:8000` for the interactive playground.
+
+| Approve | Resize | Reject |
+|---|---|---|
+| [![approve](docs/assets/playground-approve.png)](docs/assets/playground-approve.png) | [![resize](docs/assets/playground-resize.png)](docs/assets/playground-resize.png) | [![reject](docs/assets/playground-reject.png)](docs/assets/playground-reject.png) |
+| All three gates pass — $1,500 clears as proposed. | Gate 2 trims an oversized $9,000 ask to the reliability-adjusted ceiling ($2,500). | Gate 3 blocks a LONG that conflicts with an existing SHORT. |
+
+Each verdict lists the Lean theorems backing it (`verifySignal_approve_implies_consistent`, `checkConstraints_approve_within_ceiling`, …) — the gate's public contract, proved, not asserted.
+
+The bundled example runner — a caller wiring itself to the verifier — ships a live dashboard:
+
+[![dashboard](docs/assets/dashboard.png)](docs/assets/dashboard.png)
+
 ## Quick start
 
 ```bash
